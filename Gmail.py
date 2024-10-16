@@ -4,6 +4,8 @@ from datetime import datetime
 import simplegmail
 from simplegmail.message import Message
 
+from LocalDatabase import LocalDatabase
+
 
 class Gmail:
     __gmail_instance = simplegmail.Gmail(
@@ -13,8 +15,10 @@ class Gmail:
 
     @staticmethod
     def get_new_messages() -> typing.List[Message]:
+        newer_than_days = Gmail.__get_newer_than_days()
+
         query_params = {
-            "newer_than": (1, "day"),
+            "newer_than": (newer_than_days, "day"),
             "unread": True,
         }
 
@@ -38,3 +42,17 @@ class Gmail:
     def __format_time(time: str) -> str:
         dt = datetime.fromisoformat(time)
         return dt.strftime("%Y-%m-%d %H:%M")
+
+    @staticmethod
+    def __get_newer_than_days() -> int:
+        last_email_date: str | None = LocalDatabase.get_value("last_email_date")
+
+        if last_email_date is None:
+            last_email_date = datetime.now().isoformat()
+
+        LocalDatabase.set_value("last_email_date", datetime.now().isoformat())
+
+        newer_than_date = datetime.fromisoformat(last_email_date)
+        days_diff = (datetime.now() - newer_than_date).days + 1
+
+        return days_diff
