@@ -5,18 +5,29 @@ import pyttsx3
 import speech_recognition as sr
 
 
+class TTS_Engine:
+    def __init__(self) -> None:
+        self.__engine = pyttsx3.init()
+        self.__engine.setProperty("rate", 150)
+        self.__engine.setProperty("volume", 0.6)
+        self.__voices = self.__engine.getProperty("voices")  # id=0: EN, id=1: PL
+        self.__engine.setProperty("voice", self.__voices[1].id)
+
+    def text_to_speech(self, text: str) -> None:
+        self.__engine.say(text)
+        self.__engine.runAndWait()
+
+    def save_text_to_file(self, text: str, filename: str) -> None:
+        self.__engine.save_to_file(text, filename)
+        self.__engine.runAndWait()
+
+
 class Audio:
     __microphone = sr.Microphone()
     __recognizer = sr.Recognizer()
 
-    __tts_engine = pyttsx3.init()
-    __tts_engine.setProperty("rate", 150)
-    __tts_engine.setProperty("volume", 0.6)
-    __voices = __tts_engine.getProperty("voices")  # id=0: EN, id=1: PL
-    __tts_engine.setProperty("voice", __voices[1].id)
-
     @staticmethod
-    def play_audio_from_filename(filename: str) -> None:
+    def play_audio_from_file(filename: str) -> None:
         with wave.open(filename, "rb") as wf:
             audio_instance = pyaudio.PyAudio()
 
@@ -37,15 +48,27 @@ class Audio:
             audio_instance.terminate()
 
     @staticmethod
-    def text_to_speech(text: str) -> None:
-        Audio.__tts_engine.say(text)
-        Audio.__tts_engine.runAndWait()
+    def save_text_to_file(text: str, filename: str) -> None:
+        tts_engine = TTS_Engine()
+
+        tts_engine.save_text_to_file(text, filename)
+
+        del tts_engine
 
     @staticmethod
-    def record_audio(duration: int = 2) -> sr.AudioData:
-        with Audio.__microphone as source:  # type: ignore
-            print("Say something...")
+    def text_to_speech(text: str) -> None:
+        tts_engine = TTS_Engine()
 
+        tts_engine.text_to_speech(text)
+
+        del tts_engine
+
+    @staticmethod
+    def record_audio(duration: int = 3) -> sr.AudioData:
+        Audio.play_audio_from_file("voice/bot/listening.wav")
+        print("Say something...")
+
+        with Audio.__microphone as source:  # type: ignore
             audio = Audio.__recognizer.record(source, duration=duration)
 
             return audio

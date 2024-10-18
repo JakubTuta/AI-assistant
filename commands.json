@@ -1,7 +1,7 @@
 {
     "help": "List all commands",
-    "commands": "List all commands",
-    "list commands": "List all commands",
     "check new emails": "Check if new email has arrived",
-    "queue up": "Runs League of Legends"
+    "queue up": "Runs League of Legends",
+    "toggle led": "Toggle the LED",
+    "kill yourself": "Shuts down the computer" 
 }

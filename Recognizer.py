@@ -39,7 +39,7 @@ class Recognizer:
             raise Exception(f"Unknown error occurred; {e}")
 
     @staticmethod
-    def categorize_command(command: str) -> str | None:
+    def categorize_command(command: str) -> str:
         commands = Commands.get_all_commands()
 
         closest_command = difflib.get_close_matches(command, commands)
@@ -47,4 +47,4 @@ class Recognizer:
         if len(closest_command) > 0:
             return closest_command[0]
 
-        return None
+        return command
