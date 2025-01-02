@@ -4,7 +4,7 @@ from datetime import datetime
 import simplegmail
 from simplegmail.message import Message
 
-from LocalDatabase import LocalDatabase
+from .LocalDatabase import LocalDatabase
 
 
 class Gmail:

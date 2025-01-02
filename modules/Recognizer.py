@@ -3,8 +3,8 @@ import difflib
 import speech_recognition as sr
 from google.cloud.speech_v1.types.cloud_speech import RecognizeResponse
 
-from Audio import Audio
-from Commands import Commands
+from .Audio import Audio
+from .Commands import Commands
 
 
 class Recognizer:

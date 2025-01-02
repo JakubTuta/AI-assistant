@@ -1,7 +1,11 @@
 {
     "help": "List all commands",
+    "ask question": "Ask a question to AI assistant",
     "check new emails": "Check if new email has arrived",
+    "weather": "Checks weather for a given city",
+    "idle mouse": "Moves the mouse to prevent idle",
     "queue up": "Runs League of Legends",
-    "toggle led": "Toggle the LED",
-    "kill yourself": "Shuts down the computer" 
+    "accept game": "Finds button 'Accept!' on the screen and clicks it",
+    "shut down": "Shuts down the computer",
+    "exit": "Exits program"
 }

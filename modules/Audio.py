@@ -1,3 +1,4 @@
+import os
 import wave
 
 import pyaudio
@@ -49,6 +50,8 @@ class Audio:
 
     @staticmethod
     def save_text_to_file(text: str, filename: str) -> None:
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+
         tts_engine = TTS_Engine()
 
         tts_engine.save_text_to_file(text, filename)
@@ -65,7 +68,7 @@ class Audio:
 
     @staticmethod
     def record_audio(duration: int = 3) -> sr.AudioData:
-        Audio.play_audio_from_file("voice/bot/listening.wav")
+        Audio.play_audio_from_file("../voice/bot/listening.wav")
         print("Say something...")
 
         with Audio.__microphone as source:  # type: ignore
