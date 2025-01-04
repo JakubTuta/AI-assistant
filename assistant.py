@@ -21,7 +21,9 @@ def on_key_combination(employer: Employer) -> None:
         print(f"Error: {e}")
 
 
-def speech_to_text(employer: Employer) -> None:
+def speech_to_text() -> None:
+    employer = Employer(audio=True)
+
     Audio.play_audio_from_file("voice/bot/ready.wav")
 
     # # Ctrl + L
@@ -37,10 +39,13 @@ def speech_to_text(employer: Employer) -> None:
             time.sleep(1)
         except KeyboardInterrupt:
             print("Program interrupted and exiting...")
+
             break
 
 
-def text_to_text(employer: Employer) -> None:
+def text_to_text() -> None:
+    employer = Employer(audio=False)
+
     print("Listening for text input...")
 
     while True:
@@ -49,17 +54,17 @@ def text_to_text(employer: Employer) -> None:
 
             employer.job_on_command(user_input)
 
-        except Exception as e:
-            print(f"Error: {e}\nExiting program...")
+        except KeyboardInterrupt:
+            print("\nExiting program...")
 
             break
 
 
 if __name__ == "__main__":
-    employer = Employer()
+    print("Starting program...")
 
     if len(sys.argv) == 1 or len(sys.argv) == 2 and sys.argv[1] == "audio":
-        speech_to_text(employer)
+        speech_to_text()
 
     elif len(sys.argv) == 2 and sys.argv[1] == "text":
-        text_to_text(employer)
+        text_to_text()

@@ -2,6 +2,8 @@ import os
 import threading
 import time
 
+import geocoder
+
 from .AI import AI
 from .Audio import Audio
 from .Commands import Commands
@@ -12,7 +14,7 @@ from .Weather import Weather
 
 
 class Employer:
-    def __init__(self):
+    def __init__(self, audio: bool = False) -> None:
         self.available_jobs = {
             "help": Employer.help,
             "ask_question": Employer.ask_question,
@@ -25,6 +27,7 @@ class Employer:
             "exit": Employer.exit,
         }
         self.available_functions = list(self.available_jobs.values())
+        self.audio = audio
 
     def job_on_command(self, user_input: str) -> None:
         """
@@ -46,6 +49,8 @@ class Employer:
 
         function_name = bot_response["name"]
         function_args = bot_response["args"]
+
+        function_args["audio"] = self.audio
 
         if function_name in self.available_jobs:
             self.available_jobs[function_name](**function_args)
@@ -74,7 +79,7 @@ class Employer:
     @staticmethod
     def ask_question(question: str, audio: bool = False) -> None:
         """
-        Asks a question and retrieves the answer using the AI module.
+        Asks a question and retrieves the answer from the AI assistant.
 
         Args:
             question (str): The question to ask.
@@ -100,7 +105,7 @@ class Employer:
     @staticmethod
     def check_new_emails(audio: bool = False) -> None:
         """
-        Checks for new emails and notifies the user either via audio or print.
+        Checks for new emails on Gmail and notifies the user either via audio or print.
 
         Args:
             audio (bool): If True, notifications will be given via text-to-speech.
@@ -126,20 +131,29 @@ class Employer:
                 print(formatted_message)
 
     @staticmethod
-    def weather(city: str, audio: bool = False) -> None:
+    def weather(city: str | None = None, audio: bool = False) -> None:
         """
-        Retrieves and reports the weather for a given city.
+        Retrieves and outputs the weather information for a given city. If no city is provided,
+        it uses the user's current geolocation to determine the city.
 
         Args:
-            city (str): The name of the city to get the weather for.
-            audio (bool): If True, the weather report will be converted to speech.
-                          If False, the weather report will be printed to the console.
+            city (str | None): The name of the city for which to retrieve the weather.
+                                If None or empty string, the user's current geolocation is used.
+            audio (bool): If True, the weather information is converted to speech. If False,
+                          the weather information is printed to the console.
 
         Returns:
             None
         """
 
-        lat, lon = Weather.get_coordinates_for_city_name(city)
+        if city is None or city == "":
+            my_geolocation = geocoder.ip("me")
+
+            city = my_geolocation.city
+            lat, lon = my_geolocation.latlng
+
+        else:
+            lat, lon = Weather.get_coordinates_for_city_name(city)
 
         if lat is None or lon is None:
             print("Error: Could not retrieve coordinates for the given city.")
@@ -153,7 +167,7 @@ class Employer:
 
             return
 
-        string_weather = f"The weather is {weather['weather'][0]['description']} with {weather['main']['temp']}°C."
+        string_weather = f"The weather for {city} is {weather['weather'][0]['description']} with {weather['main']['temp']}°C."
 
         if audio:
             Audio.text_to_speech(string_weather)
