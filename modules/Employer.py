@@ -14,11 +14,15 @@ from .Weather import Weather
 
 
 class Employer:
+    _active_jobs = {}
+
     def __init__(self, audio: bool = False) -> None:
         self.available_jobs = {
             "help": Employer.help,
             "ask_question": Employer.ask_question,
             "check_new_emails": Employer.check_new_emails,
+            "start_checking_new_emails": Employer.start_checking_new_emails,
+            "stop_checking_new_emails": Employer.stop_checking_new_emails,
             "weather": Employer.weather,
             "accept_game": Employer.accept_game,
             "idle_mouse": Employer.idle_mouse,
@@ -135,6 +139,56 @@ class Employer:
                 Audio.text_to_speech(formatted_message)
             else:
                 print(formatted_message)
+
+    @staticmethod
+    def start_checking_new_emails(audio: bool = False, **kwargs) -> None:
+        """
+        Starts a background thread that checks for new emails at regular intervals.
+        This function creates and starts a daemon thread that runs indefinitely,
+        checking for new emails every 15 minutes. The check is performed by calling
+        the `Employer.check_new_emails` method.
+
+        Args:
+            audio (bool, optional): If True, audio notifications will be enabled. Defaults to False.
+            **kwargs: Additional keyword arguments to pass to the `Employer.check_new_emails` method.
+
+        Returns:
+            None
+        """
+
+        minutes = 15
+        print(f"Checking new emails every {minutes} minutes...")
+
+        def wrapper():
+            while True:
+                if "check_new_emails" not in Employer._active_jobs:
+                    break
+
+                Employer.check_new_emails(audio=audio)
+                time.sleep(60 * minutes)
+
+        if "check_new_emails" not in Employer._active_jobs:
+            thread = threading.Thread(target=wrapper)
+            thread.daemon = True
+            thread.start()
+
+            Employer._active_jobs["check_new_emails"] = thread
+
+    @staticmethod
+    def stop_checking_new_emails(**kwargs) -> None:
+        """
+        Stops the background thread that checks for new emails at regular intervals.
+        This function stops the daemon thread that was started by the `Employer.infinitely_check_new_emails` method.
+
+        Returns:
+            None
+        """
+
+        print("Stopping checking new emails...")
+
+        if "check_new_emails" in Employer._active_jobs:
+            Employer._active_jobs["check_new_emails"].join()
+            del Employer._active_jobs["check_new_emails"]
 
     @staticmethod
     def weather(city: str | None = None, audio: bool = False, **kwargs) -> None:

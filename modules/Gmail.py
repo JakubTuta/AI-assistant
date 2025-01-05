@@ -29,10 +29,23 @@ class Gmail:
         return messages
 
     @staticmethod
+    def check_latest_emails(minutes: int = 15) -> typing.List[Message]:
+        query_params = {
+            "newer_than": (minutes, "minute"),
+            "unread": True,
+        }
+
+        messages = Gmail._gmail_instance.get_messages(
+            query=simplegmail.query.construct_query(query_params)
+        )
+
+        return messages
+
+    @staticmethod
     def format_message(message: Message) -> str:
-        return f"Message from {Gmail._format_sender(message.sender)} \
-            at {Gmail._format_time(message.date)}. \
-            Subject: {message.subject}."
+        return f"Message from {Gmail._format_sender(message.sender.strip())} \
+            at {Gmail._format_time(message.date.strip())}. \
+            Subject: {message.subject.strip()}."
 
     @staticmethod
     def _format_sender(sender: str) -> str:
