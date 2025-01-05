@@ -8,8 +8,8 @@ from .Commands import Commands
 
 
 class Recognizer:
-    __recognizer = sr.Recognizer()
-    __credentials_json = "credentials/voice_recognition_credentials.json"
+    _recognizer = sr.Recognizer()
+    _credentials_json = "credentials/voice_recognition_credentials.json"
 
     @staticmethod
     def recognize_speech_from_mic() -> RecognizeResponse | str:
@@ -20,9 +20,9 @@ class Recognizer:
             raise Exception(f"Error: {e}")
 
         try:
-            response = Recognizer.__recognizer.recognize_google_cloud(
+            response = Recognizer._recognizer.recognize_google_cloud(
                 audio,
-                credentials_json=Recognizer.__credentials_json,
+                credentials_json=Recognizer._credentials_json,
             )
 
             return response

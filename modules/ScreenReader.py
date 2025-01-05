@@ -4,7 +4,7 @@ import pyautogui
 
 
 class ScreenReader:
-    __reader = easyocr.Reader(["en"])
+    _reader = easyocr.Reader(["en"])
 
     @staticmethod
     def take_screenshot(gray: bool = False) -> np.ndarray:
@@ -19,7 +19,7 @@ class ScreenReader:
 
     @staticmethod
     def find_text_in_screenshot(screenshot: np.ndarray, text: str):
-        result = ScreenReader.__reader.readtext(screenshot)
+        result = ScreenReader._reader.readtext(screenshot)
 
         text_object = next(
             (detection for detection in result if detection[1].lower() == text.lower()),

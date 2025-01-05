@@ -41,7 +41,7 @@ class Employer:
         """
 
         bot_response = AI.get_function_to_call(user_input, self.available_functions)
-        print(bot_response)
+
         if bot_response is None:
             print("Error: Could not determine function to call.")
 
@@ -56,7 +56,7 @@ class Employer:
             self.available_jobs[function_name](**function_args)
 
     @staticmethod
-    def help(audio: bool = False) -> None:
+    def help(audio: bool = False, **kwargs) -> None:
         """
         Provides help information about available commands.
 
@@ -68,6 +68,8 @@ class Employer:
             None
         """
 
+        print("Getting all commands...")
+
         commands = Commands.get_all_commands()
         string_commends = ", ".join(commands)
 
@@ -77,7 +79,7 @@ class Employer:
             print(f"Available commands are: {string_commends}.")
 
     @staticmethod
-    def ask_question(question: str, audio: bool = False) -> None:
+    def ask_question(question: str, audio: bool = False, **kwargs) -> None:
         """
         Asks a question and retrieves the answer from the AI assistant.
 
@@ -89,6 +91,8 @@ class Employer:
         Returns:
             None
         """
+
+        print("Asking question...")
 
         answer = AI.ask_question(question)
 
@@ -103,7 +107,7 @@ class Employer:
             print(answer)
 
     @staticmethod
-    def check_new_emails(audio: bool = False) -> None:
+    def check_new_emails(audio: bool = False, **kwargs) -> None:
         """
         Checks for new emails on Gmail and notifies the user either via audio or print.
 
@@ -114,6 +118,8 @@ class Employer:
         Returns:
             None
         """
+
+        print("Checking new emails...")
 
         messages = Gmail.get_new_messages()
 
@@ -131,7 +137,7 @@ class Employer:
                 print(formatted_message)
 
     @staticmethod
-    def weather(city: str | None = None, audio: bool = False) -> None:
+    def weather(city: str | None = None, audio: bool = False, **kwargs) -> None:
         """
         Retrieves and outputs the weather information for a given city. If no city is provided,
         it uses the user's current geolocation to determine the city.
@@ -145,6 +151,8 @@ class Employer:
         Returns:
             None
         """
+
+        print("Getting weather...")
 
         if city is None or city == "":
             my_geolocation = geocoder.ip("me")
@@ -175,7 +183,7 @@ class Employer:
             print(string_weather)
 
     @staticmethod
-    def accept_game() -> None:
+    def accept_game(**kwargs) -> None:
         """
         Starts a background thread that continuously takes screenshots and searches for the text "accept!".
         When the text is found, it moves the mouse to the center of the bounding box of the text and clicks the left mouse button.
@@ -195,6 +203,8 @@ class Employer:
         Returns:
             None
         """
+
+        print("Accepting game...")
 
         def wrapper():
             mouse_controller = MouseController()
@@ -219,7 +229,7 @@ class Employer:
         thread.start()
 
     @staticmethod
-    def idle_mouse() -> None:
+    def idle_mouse(**kwargs) -> None:
         """
         Simulates mouse idle activity by using the MouseController class to move the mouse.
         This function creates an instance of the MouseController class and calls its idle_mouse method to simulate mouse movement.
@@ -228,11 +238,13 @@ class Employer:
             None
         """
 
+        print("Idling mouse...")
+
         mouse_controller = MouseController()
         mouse_controller.idle_mouse()
 
     @staticmethod
-    def queue_up() -> None:
+    def queue_up(**kwargs) -> None:
         """
         Opens the League of Legends application by starting the shortcut file located on the desktop.
 
@@ -240,10 +252,12 @@ class Employer:
             None
         """
 
+        print("Queueing up...")
+
         os.startfile("C:/Users/Public/Desktop/League of Legends.lnk")
 
     @staticmethod
-    def close_computer() -> None:
+    def close_computer(**kwargs) -> None:
         """
         Shuts down the computer immediately after converting the text "o7" to speech.
         Executes the system command to shut down the computer forcefully and immediately.
@@ -252,11 +266,13 @@ class Employer:
             None
         """
 
+        print("Closing computer...")
+
         Audio.text_to_speech("o7")
         os.system("shutdown /s /f /t 0")
 
     @staticmethod
-    def exit() -> None:
+    def exit(**kwargs) -> None:
         """
         Terminates the process immediately without calling cleanup handlers, flushing stdio buffers, etc.
         This function is intended to be used for emergency exits only. It should not be used for normal program termination.
@@ -264,5 +280,7 @@ class Employer:
         Returns:
             None
         """
+
+        print("Exiting program...")
 
         os._exit(0)

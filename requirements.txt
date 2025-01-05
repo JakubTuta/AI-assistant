@@ -1,0 +1,11 @@
+numpy
+ollama
+pyaudio
+pyttsx3
+SpeechRecognition
+PyAutoGUI
+pynput
+geocoder
+simplegmail
+google-cloud-speech
+easyocr

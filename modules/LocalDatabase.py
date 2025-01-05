@@ -3,24 +3,24 @@ import typing
 
 
 class LocalDatabase:
-    __values = {}
+    _values = {}
 
     @staticmethod
     def load_values() -> None:
         with open("local_database.json", "r") as file:
-            LocalDatabase.__values = json.load(file)
+            LocalDatabase._values = json.load(file)
 
     @staticmethod
     def get_values() -> dict:
-        return LocalDatabase.__values
+        return LocalDatabase._values
 
     @staticmethod
     def set_value(key: str, value: typing.Any) -> None:
-        LocalDatabase.__values[key] = value
+        LocalDatabase._values[key] = value
 
         with open("local_database.json", "w") as file:
-            json.dump(LocalDatabase.__values, file, indent=4)
+            json.dump(LocalDatabase._values, file, indent=4)
 
     @staticmethod
     def get_value(key: str) -> typing.Any:
-        return LocalDatabase.__values.get(key, None)
+        return LocalDatabase._values.get(key, None)
