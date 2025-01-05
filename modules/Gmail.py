@@ -4,7 +4,7 @@ from datetime import datetime
 import simplegmail
 from simplegmail.message import Message
 
-from .LocalDatabase import LocalDatabase
+from .Cache import Cache
 
 
 class Gmail:
@@ -58,12 +58,12 @@ class Gmail:
 
     @staticmethod
     def _get_newer_than_days() -> int:
-        last_email_date: str | None = LocalDatabase.get_value("last_email_date")
+        last_email_date: str | None = Cache.get_value("last_email_date")
 
         if last_email_date is None:
             last_email_date = datetime.now().isoformat()
 
-        LocalDatabase.set_value("last_email_date", datetime.now().isoformat())
+        Cache.set_value("last_email_date", datetime.now().isoformat())
 
         newer_than_date = datetime.fromisoformat(last_email_date)
         days_diff = (datetime.now() - newer_than_date).days + 1

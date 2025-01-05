@@ -14,7 +14,7 @@ from .Weather import Weather
 
 
 class Employer:
-    _active_jobs = {}
+    _active_jobs: dict[str, threading.Thread] = {}
 
     def __init__(self, audio: bool = False) -> None:
         self.available_jobs = {
@@ -239,6 +239,7 @@ class Employer:
     @staticmethod
     def accept_game(**kwargs) -> None:
         """
+        Accepts League of Legends queue pop.
         Starts a background thread that continuously takes screenshots and searches for the text "accept!".
         When the text is found, it moves the mouse to the center of the bounding box of the text and clicks the left mouse button.
         The function uses the following steps:
@@ -311,7 +312,7 @@ class Employer:
         os.startfile("C:/Users/Public/Desktop/League of Legends.lnk")
 
     @staticmethod
-    def close_computer(**kwargs) -> None:
+    def close_computer(audio: bool = False, **kwargs) -> None:
         """
         Shuts down the computer immediately after converting the text "o7" to speech.
         Executes the system command to shut down the computer forcefully and immediately.
@@ -322,11 +323,15 @@ class Employer:
 
         print("Closing computer...")
 
-        Audio.text_to_speech("o7")
+        if audio:
+            Audio.text_to_speech("o7")
+        else:
+            print("o7")
+
         os.system("shutdown /s /f /t 0")
 
     @staticmethod
-    def exit(**kwargs) -> None:
+    def exit(audio: bool = False, **kwargs) -> None:
         """
         Terminates the process immediately without calling cleanup handlers, flushing stdio buffers, etc.
         This function is intended to be used for emergency exits only. It should not be used for normal program termination.
@@ -336,5 +341,10 @@ class Employer:
         """
 
         print("Exiting program...")
+
+        if audio:
+            Audio.text_to_speech("o7")
+        else:
+            print("o7")
 
         os._exit(0)

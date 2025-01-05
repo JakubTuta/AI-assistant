@@ -2,25 +2,25 @@ import json
 import typing
 
 
-class LocalDatabase:
+class Cache:
     _values = {}
 
     @staticmethod
     def load_values() -> None:
-        with open("local_database.json", "r") as file:
-            LocalDatabase._values = json.load(file)
+        with open("cache.json", "r") as file:
+            Cache._values = json.load(file)
 
     @staticmethod
     def get_values() -> dict:
-        return LocalDatabase._values
+        return Cache._values
 
     @staticmethod
     def set_value(key: str, value: typing.Any) -> None:
-        LocalDatabase._values[key] = value
+        Cache._values[key] = value
 
         with open("local_database.json", "w") as file:
-            json.dump(LocalDatabase._values, file, indent=4)
+            json.dump(Cache._values, file, indent=4)
 
     @staticmethod
     def get_value(key: str) -> typing.Any:
-        return LocalDatabase._values.get(key, None)
+        return Cache._values.get(key, None)
