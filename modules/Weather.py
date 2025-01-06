@@ -2,9 +2,11 @@ import typing
 
 import requests
 
+from .Credentials import Credentials
+
 
 class Weather:
-    _api_key = "d53bf88d7eb131d05598464d6d2f10ee"
+    _api_key = Credentials.get_value("weather")
 
     @staticmethod
     def get_coordinates_for_city_name(

@@ -12,6 +12,9 @@ class Cache:
 
     @staticmethod
     def get_values() -> dict:
+        if not len(Cache._values):
+            Cache.load_values()
+
         return Cache._values
 
     @staticmethod
@@ -23,4 +26,7 @@ class Cache:
 
     @staticmethod
     def get_value(key: str) -> typing.Any:
+        if not len(Cache._values):
+            Cache.load_values()
+
         return Cache._values.get(key, None)
