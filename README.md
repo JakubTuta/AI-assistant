@@ -43,8 +43,15 @@ You need to create Voice Recognition credentials
 
 You are gonna need to log into your Gmail account through the console to enable the Gmail API
 
-1. Run the AI assistant program:
+## Running the program
+1. Open a console and type:
+    ```bash
+    ollama serve
+    ```
+
+    1.1 (optionally) run a ollama/ollama container
+
+2. Now you can run the AI assistant program:
     ```bash
     python assistant.py
     ```
-2. Follow the on-screen instructions to use voice or text commands.
