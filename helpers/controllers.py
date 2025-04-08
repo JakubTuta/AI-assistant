@@ -10,7 +10,22 @@ class MouseController(pynput.mouse.Controller):
     def __init__(self) -> None:
         super().__init__()
 
-    def idle_mouse(self, minutes: int = 1) -> None:
+    @staticmethod
+    def idle_mouse(**kwargs) -> None:
+        """
+        Simulates mouse idle activity by using the MouseController class to move the mouse.
+        This function creates an instance of the MouseController class and calls its idle_mouse method to simulate mouse movement.
+
+        Returns:
+            None
+        """
+
+        print("Idling mouse...")
+
+        mouse_controller = MouseController()
+        mouse_controller.func_idle_mouse()
+
+    def func_idle_mouse(self, minutes: int = 1) -> None:
         screen_width, screen_height = pyautogui.size()
         screen_center = (screen_width // 2, screen_height // 2)
 

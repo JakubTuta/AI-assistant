@@ -3,9 +3,9 @@ import time
 
 import keyboard
 
-from modules.Audio import Audio
-from modules.Employer import Employer
-from modules.Recognizer import Recognizer
+from helpers.audio import Audio
+from helpers.recognizer import Recognizer
+from modules.employer import Employer
 
 
 def on_key_combination(employer: Employer) -> None:
@@ -63,8 +63,8 @@ def text_to_text() -> None:
 if __name__ == "__main__":
     print("Starting program...")
 
-    if len(sys.argv) == 1 or len(sys.argv) == 2 and sys.argv[1] == "audio":
-        speech_to_text()
-
-    elif len(sys.argv) == 2 and sys.argv[1] == "text":
+    if len(sys.argv) == 1 or len(sys.argv) == 2 and sys.argv[1] == "text":
         text_to_text()
+
+    elif len(sys.argv) == 2 and sys.argv[1] == "audio":
+        speech_to_text()

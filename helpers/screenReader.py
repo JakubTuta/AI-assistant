@@ -22,7 +22,7 @@ class ScreenReader:
         result = ScreenReader._reader.readtext(screenshot)
 
         text_object = next(
-            (detection for detection in result if detection[1].lower() == text.lower()),
+            (detection for detection in result if detection[1].lower() == text.lower()),  # type: ignore
             None,
         )
 

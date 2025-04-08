@@ -17,7 +17,7 @@ class Credentials:
         return Credentials._values
 
     @staticmethod
-    def get_value(key: str) -> str:
+    def get_value(key: str) -> str | None:
         if not len(Credentials._values):
             Credentials.load_values()
 
