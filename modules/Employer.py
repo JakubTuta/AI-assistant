@@ -1,6 +1,6 @@
-import os
 import threading
 
+from helpers import decorators
 from helpers.audio import Audio
 from helpers.commands import Commands
 from helpers.controllers import MouseController
@@ -25,6 +25,7 @@ class Employer:
             "accept_game": LeagueOfLegends.accept_game,
             "idle_mouse": MouseController.idle_mouse,
             "queue_up": LeagueOfLegends.queue_up,
+            "close_game": LeagueOfLegends.close_game,
             "stop_active_jobs": Employer.stop_active_jobs,
             "close_computer": System.close_computer,
             "exit": Employer.exit,
@@ -44,9 +45,11 @@ class Employer:
             None
         """
 
-        bot_response = AI.get_function_to_call(user_input, self.available_functions)
-
-        if bot_response is None:
+        if (
+            bot_response := AI.get_function_to_call(
+                user_input, self.available_functions
+            )
+        ) is None:
             print("Error: Could not determine function to call.")
 
             return
@@ -59,8 +62,9 @@ class Employer:
         if function_name in self.available_jobs:
             self.available_jobs[function_name](**function_args)
 
+    @decorators.capture_response
     @staticmethod
-    def help(audio: bool = False, **kwargs) -> None:
+    def help(audio: bool = False, **kwargs) -> str:
         """
         Provides help information about available commands.
 
@@ -72,32 +76,39 @@ class Employer:
             None
         """
 
-        print("Getting all commands...")
+        if audio:
+            Audio.text_to_speech("Getting all commands...")
+        else:
+            print("Getting all commands...")
 
         commands = Commands.get_all_commands()
         string_commends = ", ".join(commands)
 
-        if audio:
-            Audio.text_to_speech(f"Available commands are: {string_commends}.")
-        else:
-            print(f"Available commands are: {string_commends}.")
+        return f"Available commands are: {string_commends}."
 
+    @decorators.capture_response
     @staticmethod
-    def stop_active_jobs(**kwargs) -> None:
+    def stop_active_jobs(audio: bool = False, **kwargs) -> str:
         """
         Stops all active jobs by terminating the threads associated with them.
         This function iterates through the active jobs and joins each thread to ensure they are stopped.
 
         Returns:
-            None
+            audio (bool): If True, the help information will be spoken using text-to-speech.
+                          If False, the help information will be printed to the console.
         """
 
-        print("Stopping all active jobs...")
+        if audio:
+            Audio.text_to_speech("Stopping all active jobs...")
+        else:
+            print("Stopping all active jobs...")
 
         for job_name, job_thread in Employer._active_jobs.items():
             job_thread.join()
 
             del Employer._active_jobs[job_name]
+
+        return "All active jobs have been stopped."
 
     @staticmethod
     def exit(audio: bool = False, **kwargs) -> None:
@@ -106,14 +117,13 @@ class Employer:
         This function is intended to be used for emergency exits only. It should not be used for normal program termination.
 
         Returns:
-            None
+            audio (bool): If True, the help information will be spoken using text-to-speech.
+                          If False, the help information will be printed to the console.
         """
 
-        print("Exiting program...")
-
         if audio:
-            Audio.text_to_speech("o7")
+            Audio.text_to_speech("Exiting program. o7")
         else:
-            print("o7")
+            print("Exiting program. o7")
 
-        os._exit(0)
+        exit(0)

@@ -2,10 +2,13 @@ numpy
 ollama
 pyaudio
 pyttsx3
-SpeechRecognition
+SpeechRecognition[google-cloud]
 PyAutoGUI
 pynput
 geocoder
 simplegmail
 google-cloud-speech
 easyocr
+keyboard
+python-dotenv
+flask

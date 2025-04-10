@@ -1,21 +1,22 @@
 import sys
 import time
 
+import dotenv
 import keyboard
 
 from helpers.audio import Audio
 from helpers.recognizer import Recognizer
+from modules import server
 from modules.employer import Employer
+
+dotenv.load_dotenv()
 
 
 def on_key_combination(employer: Employer) -> None:
     try:
-        raw_text = str(Recognizer.recognize_speech_from_mic())
-        categorized_command = Recognizer.categorize_command(raw_text)
+        user_input = str(Recognizer.recognize_speech_from_mic())
 
-        print(f"Command: {categorized_command}")
-
-        employer.job_on_command(categorized_command)
+        employer.job_on_command(user_input)
 
     except Exception as e:
         print(f"Error: {e}")
@@ -37,8 +38,9 @@ def speech_to_text() -> None:
     while True:
         try:
             time.sleep(1)
+
         except KeyboardInterrupt:
-            print("Program interrupted and exiting...")
+            print("\nExiting program...")
 
             break
 
@@ -50,7 +52,7 @@ def text_to_text() -> None:
 
     while True:
         try:
-            user_input = input("Enter a command: ")
+            user_input = input("\nEnter a command: ")
 
             employer.job_on_command(user_input)
 
@@ -67,4 +69,5 @@ if __name__ == "__main__":
         text_to_text()
 
     elif len(sys.argv) == 2 and sys.argv[1] == "audio":
+        # server.start_app()
         speech_to_text()

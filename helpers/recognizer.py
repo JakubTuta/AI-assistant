@@ -1,15 +1,14 @@
-import difflib
-
+import dotenv
 import speech_recognition as sr
 from google.cloud.speech_v1.types.cloud_speech import RecognizeResponse
 
 from helpers.audio import Audio
-from helpers.commands import Commands
+
+dotenv.load_dotenv()
 
 
 class Recognizer:
     _recognizer = sr.Recognizer()
-    _credentials_json = "credentials/voice_recognition_credentials.json"
 
     @staticmethod
     def recognize_speech_from_mic() -> RecognizeResponse | str:
@@ -20,10 +19,7 @@ class Recognizer:
             raise Exception(f"Error: {e}")
 
         try:
-            response = Recognizer._recognizer.recognize_google_cloud(
-                audio,
-                credentials_json=Recognizer._credentials_json,
-            )
+            response = Recognizer._recognizer.recognize_google_cloud(audio)
 
             return response
 
@@ -37,14 +33,3 @@ class Recognizer:
 
         except Exception as e:
             raise Exception(f"Unknown error occurred; {e}")
-
-    @staticmethod
-    def categorize_command(command: str) -> str:
-        commands = Commands.get_all_commands()
-
-        closest_command = difflib.get_close_matches(command, commands)
-
-        if len(closest_command) > 0:
-            return closest_command[0]
-
-        return command

@@ -68,8 +68,7 @@ class Audio:
 
     @staticmethod
     def record_audio(duration: int = 3) -> sr.AudioData:
-        Audio.play_audio_from_file("../voice/bot/listening.wav")
-        print("Say something...")
+        Audio.play_audio_from_file("voice/bot/listening.wav")
 
         with Audio._microphone as source:  # type: ignore
             audio = Audio._recognizer.record(source, duration=duration)

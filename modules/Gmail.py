@@ -6,7 +6,6 @@ from datetime import datetime
 import simplegmail
 from simplegmail.message import Message
 
-from helpers import decorators
 from helpers.audio import Audio
 from helpers.cache import Cache
 
@@ -23,7 +22,6 @@ class Gmail:
         creds_file="credentials/gmail_token.json",
     )
 
-    @decorators.require_docstring
     @staticmethod
     def check_new_emails(audio: bool = False, **kwargs) -> None:
         """
@@ -37,9 +35,12 @@ class Gmail:
             None
         """
 
-        print("Checking new emails...")
+        if audio:
+            Audio.text_to_speech("Checking new emails...")
+        else:
+            print("Checking new emails...")
 
-        messages = Gmail.get_new_messages()
+        messages = Gmail._get_new_messages()
 
         if audio:
             Audio.text_to_speech(f"You have {len(messages)} new messages.")
@@ -47,16 +48,17 @@ class Gmail:
             print(f"You have {len(messages)} new messages.")
 
         for message in messages:
-            formatted_message = Gmail.format_message(message)
+            formatted_message = Gmail._format_message(message)
 
             if audio:
                 Audio.text_to_speech(formatted_message)
             else:
                 print(formatted_message)
 
-    @decorators.require_docstring
     @staticmethod
-    def start_checking_new_emails(audio: bool = False, **kwargs) -> None:
+    def start_checking_new_emails(
+        delay: int = 15, audio: bool = False, **kwargs
+    ) -> None:
         """
         Starts a background thread that checks for new emails at regular intervals.
         This function creates and starts a daemon thread that runs indefinitely,
@@ -64,15 +66,19 @@ class Gmail:
         the `Employer.check_new_emails` method.
 
         Args:
-            audio (bool, optional): If True, audio notifications will be enabled. Defaults to False.
-            **kwargs: Additional keyword arguments to pass to the `Employer.check_new_emails` method.
+            delay (int): The delay in minutes between each check for new emails.
+                         If not specified, default to 15 minutes.
+            audio (bool): If True, the help information will be spoken using text-to-speech.
+                          If False, the help information will be printed to the console.
 
         Returns:
             None
         """
 
-        minutes = 15
-        print(f"Checking new emails every {minutes} minutes...")
+        if audio:
+            Audio.text_to_speech(f"Checking new emails every {delay} minutes...")
+        else:
+            print(f"Checking new emails every {delay} minutes...")
 
         def wrapper():
             while True:
@@ -80,7 +86,7 @@ class Gmail:
                     break
 
                 Gmail.check_new_emails(audio=audio)
-                time.sleep(60 * minutes)
+                time.sleep(60 * delay)
 
         if "check_new_emails" not in get_employer()._active_jobs:
             thread = threading.Thread(target=wrapper)
@@ -89,25 +95,31 @@ class Gmail:
 
             get_employer()._active_jobs["check_new_emails"] = thread
 
-    @decorators.require_docstring
     @staticmethod
-    def stop_checking_new_emails(**kwargs) -> None:
+    def stop_checking_new_emails(audio: bool = False, **kwargs) -> None:
         """
         Stops the background thread that checks for new emails at regular intervals.
         This function stops the daemon thread that was started by the `get_employer().infinitely_check_new_emails` method.
+
+        Args:
+            audio (bool): If True, notifications will be given via text-to-speech.
+                          If False, notifications will be printed to the console.
 
         Returns:
             None
         """
 
-        print("Stopping checking new emails...")
+        if audio:
+            Audio.text_to_speech("Stopping checking new emails...")
+        else:
+            print("Stopping checking new emails...")
 
         if "check_new_emails" in get_employer()._active_jobs:
             get_employer()._active_jobs["check_new_emails"].join()
             del get_employer()._active_jobs["check_new_emails"]
 
     @staticmethod
-    def get_new_messages() -> typing.List[Message]:
+    def _get_new_messages() -> typing.List[Message]:
         newer_than_days = Gmail._get_newer_than_days()
 
         query_params = {
@@ -122,7 +134,7 @@ class Gmail:
         return messages
 
     @staticmethod
-    def check_latest_emails(minutes: int = 15) -> typing.List[Message]:
+    def _check_latest_emails(minutes: int = 15) -> typing.List[Message]:
         query_params = {
             "newer_than": (minutes, "minute"),
             "unread": True,
@@ -135,7 +147,7 @@ class Gmail:
         return messages
 
     @staticmethod
-    def format_message(message: Message) -> str:
+    def _format_message(message: Message) -> str:
         return f"Message from {Gmail._format_sender(message.sender.strip())} \
             at {Gmail._format_time(message.date.strip())}. \
             Subject: {message.subject.strip()}."

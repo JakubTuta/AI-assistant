@@ -1,16 +1,47 @@
 import functools
+import typing
+
+from helpers.audio import Audio
+
+T = typing.TypeVar("T")
 
 
-def require_docstring(func):
+def capture_response(
+    func: typing.Callable[..., typing.Any],
+) -> typing.Callable[..., typing.Optional[str]]:
     """
-    Decorator that checks if a function or method has a docstring.
-    Raises a ValueError if the docstring is missing or empty.
+    Decorator for static class methods that captures the response, prints it to console,
+    and always returns a string.
+    If 'audio' parameter exists in the function signature, it will be used; otherwise, it defaults to False.
+
+    Args:
+        func: The static method to be decorated
+
+    Returns:
+        The wrapped function that captures, prints the response, and returns it as a string
     """
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        if not func.getdoc() or func.getdoc().strip() == "":
-            raise ValueError(f"Function {func.__name__} must have a docstring")
-        return func(*args, **kwargs)
+    def wrapper(*args: typing.Any, **kwargs: typing.Any) -> typing.Optional[str]:
+        if "audio" not in kwargs:
+            kwargs["audio"] = False
+
+        is_audio = kwargs["audio"]
+
+        try:
+            response = func(*args, **kwargs)
+        except Exception as e:
+            print(f"Error: {e}")
+
+            return None
+
+        str_response = str(response) if response is not None else ""
+
+        if is_audio:
+            Audio.text_to_speech(str_response)
+        else:
+            print(str_response)
+
+        return str_response
 
     return wrapper

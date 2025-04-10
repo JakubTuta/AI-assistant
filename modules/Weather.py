@@ -1,3 +1,4 @@
+import os
 import typing
 
 import geocoder
@@ -5,15 +6,14 @@ import requests
 
 from helpers import decorators
 from helpers.audio import Audio
-from helpers.credentials import Credentials
 
 
 class Weather:
-    _api_key = Credentials.get_value("weather")
+    _api_key = os.environ.get("WEATHER_API_KEY")
 
-    @decorators.require_docstring
+    @decorators.capture_response
     @staticmethod
-    def weather(city: str | None = None, audio: bool = False, **kwargs) -> None:
+    def weather(city: str | None = None, audio: bool = False, **kwargs) -> str:
         """
         Retrieves and outputs the weather information for a given city. If no city is provided,
         it uses the user's current geolocation to determine the city.
@@ -28,7 +28,10 @@ class Weather:
             None
         """
 
-        print("Getting weather...")
+        if audio:
+            Audio.text_to_speech("Getting weather...")
+        else:
+            print("Getting weather...")
 
         if city is None or city == "":
             my_geolocation = geocoder.ip("me")
@@ -37,56 +40,57 @@ class Weather:
             lat, lon = my_geolocation.latlng
 
         else:
-            lat, lon = Weather.get_coordinates_for_city_name(city)
+            lat, lon = Weather._get_coordinates_for_city_name(city)
 
         if lat is None or lon is None:
-            print("Error: Could not retrieve coordinates for the given city.")
+            return "Error: Could not retrieve coordinates for the given city."
 
-            return
-
-        weather = Weather.get_weather_for_coordinates(lat, lon)
+        weather = Weather._get_weather_for_coordinates(lat, lon)
 
         if weather is None:
-            print("Error: Could not retrieve weather information.")
-
-            return
+            return "Error: Could not retrieve weather information."
 
         string_weather = f"The weather for {city} is {weather['weather'][0]['description']} with {weather['main']['temp']}°C."
 
-        if audio:
-            Audio.text_to_speech(string_weather)
-        else:
-            print(string_weather)
+        return string_weather
 
     @staticmethod
-    def get_coordinates_for_city_name(
+    def _get_coordinates_for_city_name(
         city_name: str,
     ) -> typing.Tuple[float | None, float | None]:
-        response = requests.get(
-            f"http://api.openweathermap.org/geo/1.0/direct?q={city_name}&appid={Weather._api_key}&limit=1"
-        )
+        try:
+            response = requests.get(
+                f"http://api.openweathermap.org/geo/1.0/direct?q={city_name}&appid={Weather._api_key}&limit=1"
+            )
 
-        data = response.json()
+            data = response.json()
 
-        if len(data) == 0:
+            if len(data) == 0:
+                return None, None
+
+            city = data[0]
+
+            return city["lat"], city["lon"]
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching coordinates: {e}")
+
             return None, None
 
-        city = data[0]
-
-        return city["lat"], city["lon"]
-
     @staticmethod
-    def get_weather_for_coordinates(
+    def _get_weather_for_coordinates(
         lat: float, lon: float
     ) -> typing.Dict[str, typing.Any] | None:
-        response = requests.get(
-            f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={Weather._api_key}&units=metric&lang=en"
-        )
-
         try:
+            response = requests.get(
+                f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={Weather._api_key}&units=metric&lang=en"
+            )
+
             data = response.json()
 
             return data
 
-        except:
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching weather data: {e}")
+
             return None
