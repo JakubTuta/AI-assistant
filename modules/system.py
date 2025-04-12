@@ -20,7 +20,6 @@ class System:
 
         if audio:
             Audio.text_to_speech("Closing computer. o7")
-        else:
-            print("Closing computer. o7")
+        print("Closing computer. o7")
 
         os.system("shutdown /s /f /t 0")

@@ -43,8 +43,7 @@ class LeagueOfLegends:
 
         if audio:
             Audio.text_to_speech("Accepting game...")
-        else:
-            print("Accepting game...")
+        print("Accepting game...")
 
         def wrapper():
             mouse_controller = MouseController()
@@ -60,6 +59,10 @@ class LeagueOfLegends:
                     mouse_controller.go_to_center_of_bbox(accept_object[0])  # type: ignore
                     mouse_controller.click_left_button()
 
+                    if audio:
+                        Audio.text_to_speech("Game accepted.")
+                    print("Game accepted.")
+
                     break
 
                 time.sleep(5)
@@ -69,9 +72,7 @@ class LeagueOfLegends:
         if employer._active_jobs.get("accept_game"):
             if audio:
                 Audio.text_to_speech("Accept game is already running.")
-
-            else:
-                print("Accept game is already running.")
+            print("Accept game is already running.")
 
             return
 
@@ -84,7 +85,7 @@ class LeagueOfLegends:
     @staticmethod
     def queue_up(audio: bool = False, **kwargs) -> None:
         """
-        Opens the League of Legends application by starting the shortcut file located on the desktop.
+        Runs the League of Legends game by starting the shortcut file located on the desktop.
 
         Args:
             audio (bool): If True, notifications will be given via text-to-speech.
@@ -96,8 +97,7 @@ class LeagueOfLegends:
 
         if audio:
             Audio.text_to_speech("Queueing up...")
-        else:
-            print("Queueing up...")
+        print("Queueing up...")
 
         os.startfile("C:/Users/Public/Desktop/League of Legends.lnk")
 
@@ -116,7 +116,6 @@ class LeagueOfLegends:
 
         if audio:
             Audio.text_to_speech("Closing game...")
-        else:
-            print("Closing game...")
+        print("Closing game...")
 
         os.system("taskkill /f /im LeagueClientUx.exe")

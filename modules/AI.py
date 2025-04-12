@@ -25,8 +25,7 @@ class AI:
 
         if audio:
             Audio.text_to_speech(f"Asking {question}...")
-        else:
-            print(f"Asking {question}...")
+        print(f"Asking {question}...")
 
         if (model := os.getenv("AI_MODEL", None)) is None:
             return "AI_MODEL environment variable is not set."

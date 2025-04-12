@@ -8,7 +8,7 @@ class ScreenReader:
 
     @staticmethod
     def take_screenshot(gray: bool = False) -> np.ndarray:
-        screenshot = pyautogui.screenshot()
+        screenshot = pyautogui.screenshot(allScreens=True)
 
         if gray:
             screenshot = screenshot.convert("L")

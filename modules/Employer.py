@@ -1,3 +1,4 @@
+import os
 import threading
 
 from helpers import decorators
@@ -78,8 +79,7 @@ class Employer:
 
         if audio:
             Audio.text_to_speech("Getting all commands...")
-        else:
-            print("Getting all commands...")
+        print("Getting all commands...")
 
         commands = Commands.get_all_commands()
         string_commends = ", ".join(commands)
@@ -100,8 +100,7 @@ class Employer:
 
         if audio:
             Audio.text_to_speech("Stopping all active jobs...")
-        else:
-            print("Stopping all active jobs...")
+        print("Stopping all active jobs...")
 
         for job_name, job_thread in Employer._active_jobs.items():
             job_thread.join()
@@ -123,7 +122,6 @@ class Employer:
 
         if audio:
             Audio.text_to_speech("Exiting program. o7")
-        else:
-            print("Exiting program. o7")
+        print("Exiting program. o7")
 
-        exit(0)
+        os._exit(0)

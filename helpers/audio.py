@@ -1,7 +1,6 @@
 import os
-import wave
 
-import pyaudio
+import playsound
 import pyttsx3
 import speech_recognition as sr
 
@@ -29,24 +28,10 @@ class Audio:
 
     @staticmethod
     def play_audio_from_file(filename: str) -> None:
-        with wave.open(filename, "rb") as wf:
-            audio_instance = pyaudio.PyAudio()
-
-            stream = audio_instance.open(
-                format=audio_instance.get_format_from_width(wf.getsampwidth()),
-                channels=wf.getnchannels(),
-                rate=wf.getframerate(),
-                output=True,
-            )
-
-            data = wf.readframes(1024)
-            while data:
-                stream.write(data)
-                data = wf.readframes(1024)
-
-            stream.stop_stream()
-            stream.close()
-            audio_instance.terminate()
+        if os.path.exists(filename):
+            playsound.playsound(filename)
+        else:
+            print(f"Audio file {filename} does not exist.")
 
     @staticmethod
     def save_text_to_file(text: str, filename: str) -> None:

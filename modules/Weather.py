@@ -30,8 +30,7 @@ class Weather:
 
         if audio:
             Audio.text_to_speech("Getting weather...")
-        else:
-            print("Getting weather...")
+        print("Getting weather...")
 
         if city is None or city == "":
             my_geolocation = geocoder.ip("me")

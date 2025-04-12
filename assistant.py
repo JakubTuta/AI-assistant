@@ -16,6 +16,8 @@ def on_key_combination(employer: Employer) -> None:
     try:
         user_input = str(Recognizer.recognize_speech_from_mic())
 
+        print(f"\nTranscribed text: {user_input}")
+
         employer.job_on_command(user_input)
 
     except Exception as e:
@@ -28,7 +30,7 @@ def speech_to_text() -> None:
     Audio.play_audio_from_file("voice/bot/ready.wav")
 
     # # Ctrl + L
-    print("Listening for key combination (Ctrl + L)...")
+    print("\nListening for key combination (Ctrl + L)...")
     keyboard.add_hotkey(
         hotkey="ctrl+l",
         callback=on_key_combination,

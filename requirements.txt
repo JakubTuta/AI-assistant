@@ -1,6 +1,5 @@
 numpy
 ollama
-pyaudio
 pyttsx3
 SpeechRecognition[google-cloud]
 PyAutoGUI
@@ -12,3 +11,4 @@ easyocr
 keyboard
 python-dotenv
 flask
+playsound

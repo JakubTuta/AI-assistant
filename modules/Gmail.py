@@ -37,8 +37,7 @@ class Gmail:
 
         if audio:
             Audio.text_to_speech("Checking new emails...")
-        else:
-            print("Checking new emails...")
+        print("Checking new emails...")
 
         messages = Gmail._get_new_messages()
 
@@ -77,8 +76,7 @@ class Gmail:
 
         if audio:
             Audio.text_to_speech(f"Checking new emails every {delay} minutes...")
-        else:
-            print(f"Checking new emails every {delay} minutes...")
+        print(f"Checking new emails every {delay} minutes...")
 
         def wrapper():
             while True:
@@ -111,8 +109,7 @@ class Gmail:
 
         if audio:
             Audio.text_to_speech("Stopping checking new emails...")
-        else:
-            print("Stopping checking new emails...")
+        print("Stopping checking new emails...")
 
         if "check_new_emails" in get_employer()._active_jobs:
             get_employer()._active_jobs["check_new_emails"].join()
