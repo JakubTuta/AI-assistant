@@ -11,4 +11,5 @@ easyocr
 keyboard
 python-dotenv
 flask
-playsound
+git+https://github.com/killjoy1221/playsound.git
+pyaudio

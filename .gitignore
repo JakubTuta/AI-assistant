@@ -3,3 +3,4 @@ credentials/
 cache.json
 venv/
 .env
+*test*

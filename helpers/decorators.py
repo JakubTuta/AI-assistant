@@ -6,6 +6,39 @@ from helpers.audio import Audio
 T = typing.TypeVar("T")
 
 
+def with_api_key(
+    api_key_func: typing.Callable[[], str],
+) -> typing.Callable[[typing.Callable[..., T]], typing.Callable[..., T]]:
+    """
+    Decorator for static class methods that handles API key authentication.
+    If the wrapped function raises an exception with a 401 status code,
+    it will get a new API key from the provided function and retry the call.
+
+    Args:
+        api_key_func: Function that returns an API key
+
+    Returns:
+        The decorated function that handles API key authentication
+    """
+
+    def decorator(func: typing.Callable[..., T]) -> typing.Callable[..., T]:
+        @functools.wraps(func)
+        def wrapper(*args: typing.Any, **kwargs: typing.Any) -> T:
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                if hasattr(e, "status_code") and getattr(e, "status_code", None) == 401:
+                    new_api_key = api_key_func()
+                    kwargs["api_key"] = new_api_key
+                    return func(*args, **kwargs)
+                else:
+                    raise
+
+        return wrapper
+
+    return decorator
+
+
 def capture_response(
     func: typing.Callable[..., typing.Any],
 ) -> typing.Callable[..., typing.Optional[str]]:
