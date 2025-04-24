@@ -15,7 +15,7 @@ def get_employer():
 
 class LeagueOfLegends:
     @staticmethod
-    def accept_game(audio: bool = False, **kwargs) -> None:
+    def accept_game(**kwargs) -> None:
         """
         Accepts League of Legends queue pop.
         Starts a background thread that continuously takes screenshots and searches for the text "accept!".
@@ -34,13 +34,13 @@ class LeagueOfLegends:
             This function is intended to be used in a game environment where the user needs to automatically accept a prompt.
 
         Args:
-            audio (bool): If True, notifications will be given via text-to-speech.
-                          If False, notifications will be printed to the console.
+            None
 
         Returns:
             None
         """
 
+        audio = kwargs.get("audio", False)
         if audio:
             Audio.text_to_speech("Accepting game...")
         print("Accepting game...")
@@ -83,18 +83,18 @@ class LeagueOfLegends:
         employer._active_jobs["accept_game"] = thread
 
     @staticmethod
-    def queue_up(audio: bool = False, **kwargs) -> None:
+    def queue_up(**kwargs) -> None:
         """
         Runs the League of Legends game by starting the shortcut file located on the desktop.
 
         Args:
-            audio (bool): If True, notifications will be given via text-to-speech.
-                          If False, notifications will be printed to the console.
+            None
 
         Returns:
             None
         """
 
+        audio = kwargs.get("audio", False)
         if audio:
             Audio.text_to_speech("Queueing up...")
         print("Queueing up...")
@@ -102,18 +102,18 @@ class LeagueOfLegends:
         os.startfile("C:/Users/Public/Desktop/League of Legends.lnk")
 
     @staticmethod
-    def close_game(audio: bool = False, **kwargs) -> None:
+    def close_game(**kwargs) -> None:
         """
         Closes the League of Legends application by terminating the process.
 
         Args:
-            audio (bool): If True, notifications will be given via text-to-speech.
-                          If False, notifications will be printed to the console.
+            None
 
         Returns:
             None
         """
 
+        audio = kwargs.get("audio", False)
         if audio:
             Audio.text_to_speech("Closing game...")
         print("Closing game...")

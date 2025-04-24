@@ -10,19 +10,18 @@ from helpers.audio import Audio
 class AI:
     @decorators.capture_response
     @staticmethod
-    def ask_question(question: str, audio: bool = False, **kwargs) -> str:
+    def ask_question(question: str, **kwargs) -> str:
         """
         Asks a question and retrieves the answer from the AI assistant.
 
         Args:
             question (str): The question to ask the AI assistant.
-            audio (bool): If True, the answer will be spoken using text-to-speech.
-                          If False, the answer will be printed to the console.
 
         Returns:
             None
         """
 
+        audio = kwargs.get("audio", False)
         if audio:
             Audio.text_to_speech(f"Asking {question}...")
         print(f"Asking {question}...")

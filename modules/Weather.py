@@ -13,26 +13,25 @@ class Weather:
 
     @decorators.capture_response
     @staticmethod
-    def weather(city: str | None = None, audio: bool = False, **kwargs) -> str:
+    def weather(city: str, **kwargs) -> str:
         """
         Retrieves and outputs the weather information for a given city. If no city is provided,
         it uses the user's current geolocation to determine the city.
 
         Args:
-            city (str | None): The name of the city for which to retrieve the weather.
-                                If None or empty string, the user's current geolocation is used.
-            audio (bool): If True, the weather information is converted to speech. If False,
-                          the weather information is printed to the console.
+            city (str): The name of the city for which to retrieve the weather.
+                                If no city is specified by user return empty string ("") and the user's current geolocation is used.
 
         Returns:
             None
         """
 
+        audio = kwargs.get("audio", False)
         if audio:
             Audio.text_to_speech("Getting weather...")
         print("Getting weather...")
 
-        if city is None or city == "":
+        if city == "":
             my_geolocation = geocoder.ip("me")
 
             city = my_geolocation.city

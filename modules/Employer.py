@@ -8,6 +8,7 @@ from helpers.controllers import MouseController
 from modules.ai import AI
 from modules.gmail import Gmail
 from modules.league import LeagueOfLegends
+from modules.spotify import Spotify
 from modules.system import System
 from modules.weather import Weather
 
@@ -16,9 +17,14 @@ class Employer:
     _active_jobs: dict[str, threading.Thread] = {}
 
     def __init__(self, audio: bool = False) -> None:
+        spotify = Spotify()
+
         self.available_jobs = {
             "help": Employer.help,
             "ask_question": AI.ask_question,
+            "start_playback": spotify.start_playback,
+            "stop_playback": spotify.stop_playback,
+            "toggle_playback": spotify.toggle_playback,
             "check_new_emails": Gmail.check_new_emails,
             "start_checking_new_emails": Gmail.start_checking_new_emails,
             "stop_checking_new_emails": Gmail.stop_checking_new_emails,
@@ -65,18 +71,18 @@ class Employer:
 
     @decorators.capture_response
     @staticmethod
-    def help(audio: bool = False, **kwargs) -> str:
+    def help(**kwargs) -> str:
         """
         Provides help information about available commands.
 
         Args:
-            audio (bool): If True, the help information will be spoken using text-to-speech.
-                          If False, the help information will be printed to the console.
+            None
 
         Returns:
             None
         """
 
+        audio = kwargs.get("audio", False)
         if audio:
             Audio.text_to_speech("Getting all commands...")
         print("Getting all commands...")
@@ -88,16 +94,19 @@ class Employer:
 
     @decorators.capture_response
     @staticmethod
-    def stop_active_jobs(audio: bool = False, **kwargs) -> str:
+    def stop_active_jobs(**kwargs) -> str:
         """
         Stops all active jobs by terminating the threads associated with them.
         This function iterates through the active jobs and joins each thread to ensure they are stopped.
 
+        Args:
+            None
+
         Returns:
-            audio (bool): If True, the help information will be spoken using text-to-speech.
-                          If False, the help information will be printed to the console.
+            None
         """
 
+        audio = kwargs.get("audio", False)
         if audio:
             Audio.text_to_speech("Stopping all active jobs...")
         print("Stopping all active jobs...")
@@ -110,16 +119,19 @@ class Employer:
         return "All active jobs have been stopped."
 
     @staticmethod
-    def exit(audio: bool = False, **kwargs) -> None:
+    def exit(**kwargs) -> None:
         """
         Terminates the process immediately without calling cleanup handlers, flushing stdio buffers, etc.
         This function is intended to be used for emergency exits only. It should not be used for normal program termination.
 
+        Args:
+            None
+
         Returns:
-            audio (bool): If True, the help information will be spoken using text-to-speech.
-                          If False, the help information will be printed to the console.
+            None
         """
 
+        audio = kwargs.get("audio", False)
         if audio:
             Audio.text_to_speech("Exiting program. o7")
         print("Exiting program. o7")

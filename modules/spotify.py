@@ -10,6 +10,8 @@ import webbrowser
 
 import requests
 
+from helpers import audio
+from helpers.audio import Audio
 from helpers.cache import Cache
 
 
@@ -81,23 +83,40 @@ class Spotify:
 
         self.device_id = self._get_active_devices()
 
-    def toggle_playback(self):
+    def toggle_playback(self, **kwargs) -> None:
         """
         Toggle Spotify music playback state between play and pause.
+
+        Args:
+            None
+
+        Returns:
+            None
         """
 
         is_playing = self._is_playback_playing()
 
         if is_playing:
-            self.stop_playback()
+            self.stop_playback(**kwargs)
 
         else:
-            self.resume_playback()
+            self.start_playback(**kwargs)
 
-    def resume_playback(self):
+    def start_playback(self, **kwargs) -> None:
         """
-        Resume Spotify music playback.
+        Starts Spotify music playback.
+
+        Args:
+            None
+
+        Returns:
+            None
         """
+
+        audio = kwargs.get("audio", False)
+        if audio:
+            Audio.text_to_speech("Starting playback...")
+        print("Starting playback...")
 
         url = "https://api.spotify.com/v1/me/player/play"
 
@@ -116,16 +135,27 @@ class Spotify:
         elif response.status_code == 401:
             print("Access token expired, refreshing...")
             self._refresh_access_token(self.refresh_token)
-            self.resume_playback()
+            self.start_playback()
 
         else:
             print(f"Failed to resume playback: {response.status_code}")
             print(response.text)
 
-    def stop_playback(self):
+    def stop_playback(self, **kwargs) -> None:
         """
-        Pause Spotify music playback.
+        Stops Spotify music playback.
+
+        Args:
+            None
+
+        Returns:
+            None
         """
+
+        audio = kwargs.get("audio", False)
+        if audio:
+            Audio.text_to_speech("Pausing playback...")
+        print("Pausing playback...")
 
         url = "https://api.spotify.com/v1/me/player/pause"
 
@@ -181,7 +211,6 @@ class Spotify:
         headers = {"Authorization": f"Bearer {self.access_token}"}
 
         response = requests.get(url, headers=headers)
-        print(response)
 
         if response.status_code == 200 and len(response.json()["devices"]) > 0:
             active_device = next(
