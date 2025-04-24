@@ -16,7 +16,7 @@ from modules.weather import Weather
 class Employer:
     _active_jobs: dict[str, threading.Thread] = {}
 
-    def __init__(self, audio: bool = False) -> None:
+    def __init__(self, audio: bool, local: bool) -> None:
         spotify = Spotify()
 
         self.available_jobs = {
@@ -40,6 +40,7 @@ class Employer:
 
         self.available_functions = list(self.available_jobs.values())
         self.audio = audio
+        self.local_model = local
 
     def job_on_command(self, user_input: str) -> None:
         """
@@ -54,7 +55,7 @@ class Employer:
 
         if (
             bot_response := AI.get_function_to_call(
-                user_input, self.available_functions
+                user_input, self.available_functions, self.local_model
             )
         ) is None:
             print("Error: Could not determine function to call.")
@@ -65,6 +66,7 @@ class Employer:
         function_args = bot_response["args"]
 
         function_args["audio"] = self.audio
+        function_args["local_model"] = self.local_model
 
         if function_name in self.available_jobs:
             self.available_jobs[function_name](**function_args)

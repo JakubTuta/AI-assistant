@@ -1,3 +1,4 @@
+import argparse
 import sys
 import time
 
@@ -24,8 +25,8 @@ def on_key_combination(employer: Employer) -> None:
         print(f"Error: {e}")
 
 
-def speech_to_text() -> None:
-    employer = Employer(audio=True)
+def speech_to_text(local: bool) -> None:
+    employer = Employer(audio=True, local=local)
 
     Audio.play_audio_from_file("voice/bot/ready.wav")
 
@@ -47,8 +48,8 @@ def speech_to_text() -> None:
             break
 
 
-def text_to_text() -> None:
-    employer = Employer(audio=False)
+def text_to_text(local: bool) -> None:
+    employer = Employer(audio=False, local=local)
 
     print("Listening for text input...")
 
@@ -67,9 +68,16 @@ def text_to_text() -> None:
 if __name__ == "__main__":
     print("Starting program...")
 
-    if len(sys.argv) == 1 or len(sys.argv) == 2 and sys.argv[1] == "text":
-        text_to_text()
+    parser = argparse.ArgumentParser(description="AI Assistant")
+    parser.add_argument(
+        "--audio", "-a", action="store_true", help="Use audio input/output"
+    )
+    parser.add_argument(
+        "--local", "-l", action="store_true", help="Use local processing"
+    )
+    args = parser.parse_args()
 
-    elif len(sys.argv) == 2 and sys.argv[1] == "audio":
-        # server.start_app()
-        speech_to_text()
+    if args.audio:
+        speech_to_text(local=args.local)
+    else:
+        text_to_text(local=args.local)
