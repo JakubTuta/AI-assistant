@@ -1,13 +1,18 @@
 {
     "help": "List all commands",
     "ask question": "Ask a question to AI assistant",
+    "start playback": "Start playing music on Spotify",
+    "stop playback": "Stop playing music on Spotify",
+    "toggle playback": "Toggle play/pause music on Spotify",
     "check new emails": "Check if new email has arrived",
     "start checking new emails": "Check if new email has arrived every 15 minutes",
     "stop checking new emails": "Stop checking new emails",
     "weather": "Checks weather for a given city",
+    "accept game": "Finds button 'Accept!' on the screen and clicks it",
     "idle mouse": "Moves the mouse to prevent idle",
     "queue up": "Runs League of Legends",
-    "accept game": "Finds button 'Accept!' on the screen and clicks it",
-    "shut down": "Shuts down the computer",
+    "close game": "Closes League of Legends",
+    "stop active jobs": "Stops all active jobs",
+    "close computer": "Shuts down the computer",
     "exit": "Exits program"
 }

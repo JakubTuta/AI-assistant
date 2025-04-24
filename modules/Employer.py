@@ -90,9 +90,12 @@ class Employer:
         print("Getting all commands...")
 
         commands = Commands.get_all_commands()
-        string_commends = ", ".join(commands)
 
-        return f"Available commands are: {string_commends}."
+        list_commands = ""
+        for indes, command in enumerate(commands):
+            list_commands += f"{indes + 1}. {command}\n"
+
+        return f"Available commands are: {list_commands}."
 
     @decorators.capture_response
     @staticmethod
