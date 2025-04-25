@@ -10,8 +10,7 @@ import webbrowser
 
 import requests
 
-from helpers import audio
-from helpers.audio import Audio
+from helpers import decorators
 from helpers.cache import Cache
 
 
@@ -57,6 +56,7 @@ class Spotify:
 
     SCOPE = "user-read-playback-state user-modify-playback-state"
 
+    @decorators.exit_on_exception
     def __init__(self):
         self.client_id = os.getenv(Spotify.ENV_SPOTIFY_CLIENT_ID, None)
         self.client_secret = os.getenv(Spotify.ENV_SPOTIFY_CLIENT_SECRET, None)
@@ -67,9 +67,11 @@ class Spotify:
             )
 
         self.access_token, self.refresh_token = self._get_tokens_from_cache()
-
         if self.access_token is not None and self.refresh_token is not None:
             self.device_id = self._get_active_devices()
+
+            if self.device_id is None:
+                raise Exception("Spotify is not running")
 
             return
 
@@ -82,6 +84,8 @@ class Spotify:
             raise Exception("Failed to get access token and refresh token")
 
         self.device_id = self._get_active_devices()
+        if self.device_id is None:
+            raise Exception("Spotify is not running")
 
     def toggle_playback(self, **kwargs) -> None:
         """
@@ -102,6 +106,7 @@ class Spotify:
         else:
             self.start_playback(**kwargs)
 
+    @decorators.retry_on_unauthorized("_refresh_access_token")
     def start_playback(self, **kwargs) -> None:
         """
         Starts Spotify music playback.
@@ -112,11 +117,6 @@ class Spotify:
         Returns:
             None
         """
-
-        audio = kwargs.get("audio", False)
-        if audio:
-            Audio.text_to_speech("Starting playback...")
-        print("Starting playback...")
 
         url = "https://api.spotify.com/v1/me/player/play"
 
@@ -129,18 +129,11 @@ class Spotify:
 
         response = requests.put(url, headers=headers)
 
-        if response.status_code == 200:
-            print("Playback resumed successfully")
+        response.raise_for_status()
 
-        elif response.status_code == 401:
-            print("Access token expired, refreshing...")
-            self._refresh_access_token(self.refresh_token)
-            self.start_playback()
+        print("Playback resumed")
 
-        else:
-            print(f"Failed to resume playback: {response.status_code}")
-            print(response.text)
-
+    @decorators.retry_on_unauthorized("_refresh_access_token")
     def stop_playback(self, **kwargs) -> None:
         """
         Stops Spotify music playback.
@@ -151,11 +144,6 @@ class Spotify:
         Returns:
             None
         """
-
-        audio = kwargs.get("audio", False)
-        if audio:
-            Audio.text_to_speech("Pausing playback...")
-        print("Pausing playback...")
 
         url = "https://api.spotify.com/v1/me/player/pause"
 
@@ -168,17 +156,63 @@ class Spotify:
 
         response = requests.put(url, headers=headers)
 
-        if response.status_code == 200:
-            print("Playback paused successfully")
+        response.raise_for_status()
 
-        elif response.status_code == 401:
-            print("Access token expired, refreshing...")
-            self._refresh_access_token(self.refresh_token)
-            self.stop_playback()
+        print("Playback paused")
 
-        else:
-            print(f"Failed to pause playback: {response.status_code}")
-            print(response.text)
+    @decorators.retry_on_unauthorized("_refresh_access_token")
+    def next_song(self, **kwargs) -> None:
+        """
+        Skips to the next song in Spotify music playback.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+
+        url = "https://api.spotify.com/v1/me/player/next"
+
+        if self.device_id:
+            url += f"?device_id={self.device_id}"
+
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+        }
+
+        response = requests.post(url, headers=headers)
+
+        response.raise_for_status()
+
+        print("Skipped a song")
+
+    @decorators.retry_on_unauthorized("_refresh_access_token")
+    def previous_song(self, **kwargs) -> None:
+        """
+        Skips to the previous song in Spotify music playback.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+
+        url = "https://api.spotify.com/v1/me/player/previous"
+
+        if self.device_id:
+            url += f"?device_id={self.device_id}"
+
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+        }
+
+        response = requests.post(url, headers=headers)
+
+        response.raise_for_status()
+
+        print("Skipped to the previous song")
 
     def _is_playback_playing(self):
         playback_state = self._get_playback_state()
@@ -203,8 +237,7 @@ class Spotify:
             print(f"Failed to get playback state: {response.status_code}")
             print(response.text)
 
-            return None
-
+    @decorators.retry_on_unauthorized("_refresh_access_token")
     def _get_active_devices(self) -> typing.Optional[str]:
         url = "https://api.spotify.com/v1/me/player/devices"
 
@@ -212,7 +245,9 @@ class Spotify:
 
         response = requests.get(url, headers=headers)
 
-        if response.status_code == 200 and len(response.json()["devices"]) > 0:
+        response.raise_for_status()
+
+        if len(response.json()["devices"]) > 0:
             active_device = next(
                 (
                     device
@@ -226,16 +261,6 @@ class Spotify:
                 active_device = response.json()["devices"][0]
 
             return active_device.get("id", None)
-
-        elif response.status_code == 401:
-            print("Access token expired, refreshing...")
-            self._refresh_access_token(self.refresh_token)
-            self._get_active_devices()
-
-        else:
-            print(f"Failed to get active devices: {response.status_code}")
-
-            return None
 
     def _refresh_access_token(self, refresh_token):
         auth_header = base64.b64encode(
@@ -255,9 +280,10 @@ class Spotify:
 
         if response.status_code == 200:
             token_info = response.json()
-            self.access_token = token_info["access_token"]
+            access_token = token_info["access_token"]
+            self.access_token = access_token
 
-            return token_info["access_token"]
+            return access_token
 
         else:
             print(f"Failed to refresh token: {response.status_code}")

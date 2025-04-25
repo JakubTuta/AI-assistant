@@ -1,38 +1,62 @@
 import functools
+import os
 import typing
+
+import requests
 
 from helpers.audio import Audio
 
 T = typing.TypeVar("T")
 
 
-def with_api_key(
-    api_key_func: typing.Callable[[], str],
-) -> typing.Callable[[typing.Callable[..., T]], typing.Callable[..., T]]:
+def exit_on_exception(func: typing.Callable[..., T]) -> typing.Callable[..., T]:
     """
-    Decorator for static class methods that handles API key authentication.
-    If the wrapped function raises an exception with a 401 status code,
-    it will get a new API key from the provided function and retry the call.
+    Decorator that captures all exceptions, prints them with class name and exits the program.
+    Works for both static and instance methods of classes.
 
     Args:
-        api_key_func: Function that returns an API key
+        func: The method to be decorated
 
     Returns:
-        The decorated function that handles API key authentication
+        The wrapped function that handles exceptions and exits on error
     """
 
-    def decorator(func: typing.Callable[..., T]) -> typing.Callable[..., T]:
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs) -> T:
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            class_name = args[0].__class__.__name__ if args else "Unknown"
+            print(f"[{class_name}]: {e}")
+
+            os._exit(1)
+
+    return wrapper
+
+
+def retry_on_unauthorized(refresh_token_method_name: str):
+    def decorator(func):
         @functools.wraps(func)
-        def wrapper(*args: typing.Any, **kwargs: typing.Any) -> T:
+        def wrapper(self, *args, **kwargs):
             try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                if hasattr(e, "status_code") and getattr(e, "status_code", None) == 401:
-                    new_api_key = api_key_func()
-                    kwargs["api_key"] = new_api_key
-                    return func(*args, **kwargs)
-                else:
-                    raise
+                return func(self, *args, **kwargs)
+
+            except requests.exceptions.RequestException as e:
+                if (
+                    hasattr(e, "response")
+                    and getattr(e.response, "status_code", None) == 401
+                ):
+                    refresh_method = getattr(self, refresh_token_method_name)
+                    refresh_method()
+
+                    return func(self, *args, **kwargs)
+
+                elif hasattr(e, "response") and getattr(
+                    e.response, "status_code", None
+                ) not in range(200, 300):
+                    print(f"Error in {func.__name__}: {e}")
+
+                raise
 
         return wrapper
 
@@ -64,7 +88,8 @@ def capture_response(
         try:
             response = func(*args, **kwargs)
         except Exception as e:
-            print(f"Error: {e}")
+            class_name = args[0].__class__.__name__ if args else "Unknown"
+            print(f"[{class_name}]: {e}")
 
             return None
 

@@ -25,6 +25,8 @@ class Employer:
             "start_playback": spotify.start_playback,
             "stop_playback": spotify.stop_playback,
             "toggle_playback": spotify.toggle_playback,
+            "next_song": spotify.next_song,
+            "previous_song": spotify.previous_song,
             "check_new_emails": Gmail.check_new_emails,
             "start_checking_new_emails": Gmail.start_checking_new_emails,
             "stop_checking_new_emails": Gmail.stop_checking_new_emails,

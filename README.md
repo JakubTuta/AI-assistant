@@ -17,6 +17,8 @@ A versatile personal assistant powered by AI that accepts both text and voice co
   - Anthropic Claude Sonnet (via API key)
   - Ollama models (locally installed)
 
+### To see all commands, see commands.json file
+
 ## Quick Start Guide
 
 ### 1. Set Up Environment

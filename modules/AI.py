@@ -13,7 +13,7 @@ from helpers.audio import Audio
 class AI:
     @decorators.capture_response
     @staticmethod
-    def ask_question(question: str, **kwargs) -> str:
+    def ask_question(question: str = "", **kwargs) -> str:
         """
         Asks a question and retrieves the answer from the AI assistant.
 
@@ -23,6 +23,9 @@ class AI:
         Returns:
             None
         """
+
+        if not question:
+            return "Error: No question provided."
 
         audio = kwargs.get("audio", False)
         if audio:
@@ -123,6 +126,7 @@ class AI:
 
         return answer
 
+    @decorators.exit_on_exception
     @staticmethod
     def _get_function_to_call_local(
         user_input: str, available_tools: typing.List[typing.Callable]
@@ -161,6 +165,7 @@ class AI:
                 "args": function_args,
             }
 
+    @decorators.exit_on_exception
     @staticmethod
     def _get_function_to_call_remote(
         user_input: str, available_tools: typing.List[typing.Callable]
