@@ -21,20 +21,30 @@ class Employer:
 
         self.available_jobs = {
             "help": Employer.help,
+            # AI
             "ask_question": AI.ask_question,
+            # Spotify
             "start_playback": spotify.start_playback,
             "stop_playback": spotify.stop_playback,
             "toggle_playback": spotify.toggle_playback,
             "next_song": spotify.next_song,
             "previous_song": spotify.previous_song,
+            "volume_up": spotify.volume_up,
+            "volume_down": spotify.volume_down,
+            "max_volume": spotify.max_volume,
+            "set_volume": spotify.set_volume,
+            # Gmail
             "check_new_emails": Gmail.check_new_emails,
             "start_checking_new_emails": Gmail.start_checking_new_emails,
             "stop_checking_new_emails": Gmail.stop_checking_new_emails,
+            # Weather
             "weather": Weather.weather,
+            # League of Legends
             "accept_game": LeagueOfLegends.accept_game,
-            "idle_mouse": MouseController.idle_mouse,
             "queue_up": LeagueOfLegends.queue_up,
             "close_game": LeagueOfLegends.close_game,
+            # System
+            "idle_mouse": MouseController.idle_mouse,
             "stop_active_jobs": Employer.stop_active_jobs,
             "close_computer": System.close_computer,
             "exit": Employer.exit,
@@ -45,16 +55,6 @@ class Employer:
         self.local_model = local
 
     def job_on_command(self, user_input: str) -> None:
-        """
-        Executes a job based on the given command.
-
-        Args:
-            command (str): The command to execute.
-
-        Returns:
-            None
-        """
-
         if (
             bot_response := AI.get_function_to_call(
                 user_input, self.available_functions, self.local_model
@@ -78,6 +78,8 @@ class Employer:
     def help(**kwargs) -> str:
         """
         Provides help information about available commands.
+
+        Keywords: help, commands, list commands, show commands, available commands, what can you do, options, functionality, capabilities
 
         Args:
             None
@@ -106,6 +108,8 @@ class Employer:
         Stops all active jobs by terminating the threads associated with them.
         This function iterates through the active jobs and joins each thread to ensure they are stopped.
 
+        Keywords: stop jobs, cancel tasks, terminate processes, end running jobs, abort, halt, kill processes, stop threads
+
         Args:
             None
 
@@ -130,6 +134,8 @@ class Employer:
         """
         Terminates the process immediately without calling cleanup handlers, flushing stdio buffers, etc.
         This function is intended to be used for emergency exits only. It should not be used for normal program termination.
+
+        Keywords: exit, quit, close app, shutdown, terminate program, end application, goodbye, bye, shut down
 
         Args:
             None

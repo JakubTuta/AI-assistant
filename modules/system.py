@@ -10,6 +10,8 @@ class System:
         Shuts down the computer immediately.
         Executes the system command to shut down the computer forcefully and immediately.
 
+        Keywords: close computer, shut down, power off, turn off, exit, close system, shutdown, power down
+
         Args:
             None
 

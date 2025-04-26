@@ -18,9 +18,12 @@ class Weather:
         Retrieves and outputs the weather information for a given city. If no city is provided,
         it uses the user's current geolocation to determine the city.
 
+        Keywords: weather, forecast, current weather, get weather, check weather, city weather, location weather
+
         Args:
             city (str): The name of the city for which to retrieve the weather.
-                                If no city is specified by user return empty string ("") and the user's current geolocation is used.
+                                If no city is specified by user the variable is set to empty string ("")
+                                and the user's current geolocation is used.
 
         Returns:
             None

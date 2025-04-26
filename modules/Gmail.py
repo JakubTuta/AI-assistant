@@ -27,6 +27,8 @@ class Gmail:
         """
         Checks for new emails on Gmail and notifies the user either via audio or print.
 
+        Keywords: email, emails, inbox, unread, messages, check emails, new emails, gmail
+
         Args:
             None
 
@@ -59,8 +61,10 @@ class Gmail:
         """
         Starts a background thread that checks for new emails at regular intervals.
         This function creates and starts a daemon thread that runs indefinitely,
-        checking for new emails every 15 minutes. The check is performed by calling
-        the `Employer.check_new_emails` method.
+        checking for new emails every 15 minutes.
+
+        Keywords: monitor email, email updates, auto-check emails, email notifications,
+                  background email checking, periodic email updates, gmail monitoring
 
         Args:
             delay (int): The delay in minutes between each check for new emails.
@@ -95,6 +99,9 @@ class Gmail:
         """
         Stops the background thread that checks for new emails at regular intervals.
         This function stops the daemon thread that was started by the `get_employer().infinitely_check_new_emails` method.
+
+        Keywords: stop email updates, disable email checking, turn off email notifications,
+                  pause email monitoring, end background email checks
 
         Args:
             None

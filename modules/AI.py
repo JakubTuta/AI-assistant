@@ -17,11 +17,16 @@ class AI:
         """
         Asks a question and retrieves the answer from the AI assistant.
 
+        Use this function for: general questions, information retrieval, knowledge queries,
+        facts, explanations, definitions, or when no other specific tool matches the query.
+
+        Keywords: ask, question, what is, how to, explain, tell me, information, know, answer
+
         Args:
             question (str): The question to ask the AI assistant.
 
         Returns:
-            None
+            str: The AI assistant's response to the question
         """
 
         if not question:
@@ -45,28 +50,17 @@ class AI:
         available_tools: typing.List[typing.Callable],
         local_model: bool,
     ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-        """
-        Get the function to call based on user input and available tools.
-
-        Args:
-            user_input (str): The user input to process.
-            available_tools (list): A list of available tools.
-            local_model (bool): Whether to use a local model or a remote one.
-
-        Returns:
-            dict: A dictionary containing the function name and arguments.
-        """
-
         if local_model:
             return AI._get_function_to_call_local(user_input, available_tools)
 
         else:
             return AI._get_function_to_call_remote(user_input, available_tools)
 
+    @decorators.exit_on_exception
     @staticmethod
     def _ask_question_local(question: str) -> str:
         if (model := os.getenv("AI_MODEL", None)) is None:
-            return "AI_MODEL environment variable is not set."
+            raise Exception("AI_MODEL environment variable is not set.")
 
         try:
             response = ollama.generate(
@@ -85,10 +79,11 @@ class AI:
 
         return answer
 
+    @decorators.exit_on_exception
     @staticmethod
     def _ask_question_remote(question: str) -> str:
         if (api_key := os.getenv("ANTHROPIC_API_KEY", None)) is None:
-            return "ANTHROPIC_API_KEY environment variable is not set."
+            raise Exception("ANTHROPIC_API_KEY environment variable is not set.")
 
         url = "https://api.anthropic.com/v1/messages"
 

@@ -20,18 +20,9 @@ class LeagueOfLegends:
         Accepts League of Legends queue pop.
         Starts a background thread that continuously takes screenshots and searches for the text "accept!".
         When the text is found, it moves the mouse to the center of the bounding box of the text and clicks the left mouse button.
-        The function uses the following steps:
-        1. Initializes a MouseController instance.
-        2. Enters an infinite loop where it:
-            a. Takes a grayscale screenshot using ScreenReader.
-            b. Searches for the text "accept!" in the screenshot.
-            c. If the text is found, moves the mouse to the center of the bounding box and clicks the left mouse button.
-            d. Breaks the loop if the text is found.
-            e. Sleeps for 5 seconds before taking another screenshot if the text is not found.
-        3. Runs the above logic in a daemon thread.
 
-        Note:
-            This function is intended to be used in a game environment where the user needs to automatically accept a prompt.
+        Keywords:
+            league, lol, queue, accept match, accept game, queue pop, ready check, auto accept
 
         Args:
             None
@@ -87,6 +78,9 @@ class LeagueOfLegends:
         """
         Runs the League of Legends game by starting the shortcut file located on the desktop.
 
+        Keywords:
+            queue up, run game, start league, open league, launch lol, play league, start lol, run league, start game
+
         Args:
             None
 
@@ -105,6 +99,9 @@ class LeagueOfLegends:
     def close_game(**kwargs) -> None:
         """
         Closes the League of Legends application by terminating the process.
+
+        Keywords:
+            exit league, quit league, terminate lol, close lol, shut down league, stop league, exit game, close game
 
         Args:
             None

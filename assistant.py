@@ -66,18 +66,35 @@ def text_to_text(local: bool) -> None:
 
 
 if __name__ == "__main__":
-    print("Starting program...")
+    print("\nStarting program...")
 
     parser = argparse.ArgumentParser(description="AI Assistant")
     parser.add_argument(
-        "--audio", "-a", action="store_true", help="Use audio input/output"
+        "--audio",
+        "-a",
+        action="store_true",
+        help="Use audio input/output",
     )
     parser.add_argument(
-        "--local", "-l", action="store_true", help="Use local processing"
+        "--local",
+        "-l",
+        action="store_true",
+        help="Use local processing",
+    )
+    parser.add_argument(
+        "--audio-local",
+        "--local-audio",
+        "-al",
+        "-la",
+        action="store_true",
+        help="Use local audio processing",
     )
     args = parser.parse_args()
 
-    if args.audio:
-        speech_to_text(local=args.local)
+    audio = args.audio or args.audio_local
+    local = args.local or args.audio_local
+
+    if audio:
+        speech_to_text(local=local)
     else:
-        text_to_text(local=args.local)
+        text_to_text(local=local)
