@@ -9,6 +9,91 @@ from helpers.audio import Audio
 T = typing.TypeVar("T")
 
 
+class JobRegistry:
+    available_jobs = {}
+    _services = {}
+    _pending_registrations = []
+
+    @classmethod
+    def register_job(cls, name=None):
+        """Decorator for static methods and functions."""
+        # Check if we're being called with the function directly or with parameters
+        if callable(name):
+            # Used as @register_job without parentheses
+            func = name
+            job_name = func.__name__
+            cls.available_jobs[job_name] = func
+            return func
+
+        # Otherwise, we're called with parameters as @register_job() or @register_job("name")
+        def decorator(func):
+            job_name = name or func.__name__
+
+            # Wrap the function to ensure it handles arguments properly
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                return func(*args, **kwargs)
+
+            cls.available_jobs[job_name] = wrapper
+            return wrapper
+
+        return decorator
+
+    @classmethod
+    def register_service(cls, service_name=None):
+        """Decorator for service classes.
+        If service_name is not provided, will use lowercase class name.
+        """
+
+        def decorator(service_class):
+            # If service_name is not provided, use lowercase class name
+            actual_service_name = service_name or service_class.__name__.lower()
+            cls._services[actual_service_name] = service_class
+            return service_class
+
+        # Handle case when decorator is used without parentheses
+        if callable(service_name):
+            service_class = service_name
+            service_name = None
+            return decorator(service_class)
+
+        return decorator
+
+    @classmethod
+    def register_method(cls, service_name=None, method_name=None, job_name=None):
+        """Decorator for methods that should be registered as jobs.
+        Required to use with classes that need instance methods.
+        If service_name is not provided, will determine from class name.
+        """
+
+        def decorator(method):
+            # Get the class from the method using __qualname__
+            # This works even if the decorator is applied before the class is fully defined
+            if service_name is None:
+                # Extract class name from method.__qualname__ which is typically 'ClassName.method_name'
+                class_name = method.__qualname__.split(".")[0].lower()
+                actual_service_name = class_name
+            else:
+                actual_service_name = service_name
+
+            cls._pending_registrations.append(
+                {
+                    "service": actual_service_name,
+                    "method": method_name or method.__name__,
+                    "job": job_name or method.__name__,
+                }
+            )
+            return method
+
+        # Handle case when decorator is used without parentheses
+        if callable(service_name):
+            method = service_name
+            service_name = None
+            return decorator(method)
+
+        return decorator
+
+
 def exit_on_exception(func: typing.Callable[..., T]) -> typing.Callable[..., T]:
     """
     Decorator that captures all exceptions, prints them with class name and exits the program.

@@ -1,67 +1,41 @@
 import os
 import threading
+import typing
 
 from helpers import decorators
 from helpers.audio import Audio
 from helpers.commands import Commands
-from helpers.controllers import MouseController
+from helpers.recognizer import Recognizer
 from modules.ai import AI
-from modules.gmail import Gmail
-from modules.league import LeagueOfLegends
-from modules.spotify import Spotify
-from modules.system import System
-from modules.weather import Weather
 
 
 class Employer:
-    _active_jobs: dict[str, threading.Thread] = {}
+    available_jobs: typing.Dict[str, typing.Callable] = {}
+    _active_jobs: typing.Dict[str, threading.Thread] = {}
+    _services = {}
 
     def __init__(self, audio: bool, local: bool) -> None:
-        spotify = Spotify()
-
-        self.available_jobs = {
-            "help": Employer.help,
-            # AI
-            "ask_question": AI.ask_question,
-            # Spotify
-            "start_playback": spotify.start_playback,
-            "stop_playback": spotify.stop_playback,
-            "toggle_playback": spotify.toggle_playback,
-            "next_song": spotify.next_song,
-            "previous_song": spotify.previous_song,
-            "volume_up": spotify.volume_up,
-            "volume_down": spotify.volume_down,
-            "max_volume": spotify.max_volume,
-            "set_volume": spotify.set_volume,
-            # Gmail
-            "check_new_emails": Gmail.check_new_emails,
-            "start_checking_new_emails": Gmail.start_checking_new_emails,
-            "stop_checking_new_emails": Gmail.stop_checking_new_emails,
-            # Weather
-            "weather": Weather.weather,
-            # League of Legends
-            "accept_game": LeagueOfLegends.accept_game,
-            "queue_up": LeagueOfLegends.queue_up,
-            "close_game": LeagueOfLegends.close_game,
-            # System
-            "idle_mouse": MouseController.idle_mouse,
-            "stop_active_jobs": Employer.stop_active_jobs,
-            "close_computer": System.close_computer,
-            "exit": Employer.exit,
-        }
-
-        self.available_functions = list(self.available_jobs.values())
         self.audio = audio
         self.local_model = local
+        self.service_instances = {}
+
+    @decorators.exit_on_exception
+    def speak(self) -> None:
+        user_input = str(Recognizer.recognize_speech_from_mic())
+
+        print(f"\nTranscribed text: {user_input}")
+
+        self.job_on_command(user_input)
 
     def job_on_command(self, user_input: str) -> None:
+        self._refresh_available_jobs()
+
         if (
             bot_response := AI.get_function_to_call(
                 user_input, self.available_functions, self.local_model
             )
         ) is None:
             print("Error: Could not determine function to call.")
-
             return
 
         function_name = bot_response["name"]
@@ -74,6 +48,7 @@ class Employer:
             self.available_jobs[function_name](**function_args)
 
     @decorators.capture_response
+    @decorators.JobRegistry.register_job
     @staticmethod
     def help(**kwargs) -> str:
         """
@@ -102,6 +77,7 @@ class Employer:
         return f"Available commands are: {list_commands}."
 
     @decorators.capture_response
+    @decorators.JobRegistry.register_job
     @staticmethod
     def stop_active_jobs(**kwargs) -> str:
         """
@@ -129,6 +105,7 @@ class Employer:
 
         return "All active jobs have been stopped."
 
+    @decorators.JobRegistry.register_job
     @staticmethod
     def exit(**kwargs) -> None:
         """
@@ -150,3 +127,21 @@ class Employer:
         print("Exiting program. o7")
 
         os._exit(0)
+
+    def _refresh_available_jobs(self):
+        """Refresh available jobs from registry"""
+        for job_name, job in decorators.JobRegistry.available_jobs.items():
+            if job_name not in self.available_jobs:
+                self.available_jobs[job_name] = job
+
+        for service_name, service_class in decorators.JobRegistry._services.items():
+            if service_name not in self.service_instances:
+                self.service_instances[service_name] = service_class()
+
+        for reg in decorators.JobRegistry._pending_registrations:
+            service = self.service_instances[reg["service"]]
+            method = getattr(service, reg["method"])
+            if reg["job"] not in self.available_jobs:
+                self.available_jobs[reg["job"]] = method
+
+        self.available_functions = list(self.available_jobs.values())

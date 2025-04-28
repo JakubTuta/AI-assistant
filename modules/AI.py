@@ -12,6 +12,7 @@ from helpers.audio import Audio
 
 class AI:
     @decorators.capture_response
+    @decorators.JobRegistry.register_job
     @staticmethod
     def ask_question(question: str = "", **kwargs) -> str:
         """
@@ -44,6 +45,7 @@ class AI:
         else:
             return AI._ask_question_remote(question)
 
+    @decorators.JobRegistry.register_job
     @staticmethod
     def get_function_to_call(
         user_input: str,
@@ -107,6 +109,9 @@ class AI:
                 ],
             },
         )
+
+        print(response)
+        print(response.json())
 
         response.raise_for_status()
 

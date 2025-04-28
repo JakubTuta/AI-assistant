@@ -2,6 +2,7 @@ import os
 import threading
 import time
 
+from helpers import decorators
 from helpers.audio import Audio
 from helpers.controllers import MouseController
 from helpers.screenReader import ScreenReader
@@ -14,6 +15,7 @@ def get_employer():
 
 
 class LeagueOfLegends:
+    @decorators.JobRegistry.register_job
     @staticmethod
     def accept_game(**kwargs) -> None:
         """
@@ -73,6 +75,7 @@ class LeagueOfLegends:
 
         employer._active_jobs["accept_game"] = thread
 
+    @decorators.JobRegistry.register_job
     @staticmethod
     def queue_up(**kwargs) -> None:
         """
@@ -95,6 +98,7 @@ class LeagueOfLegends:
 
         os.startfile("C:/Users/Public/Desktop/League of Legends.lnk")
 
+    @decorators.JobRegistry.register_job
     @staticmethod
     def close_game(**kwargs) -> None:
         """

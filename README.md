@@ -7,8 +7,8 @@ A versatile personal assistant powered by AI that accepts both text and voice co
 - **Multiple Input Methods**
   - Voice commands (with speech recognition)
   - Text commands
-  
 - **Integrations**
+
   - Weather information for any location
   - Gmail account management
   - Spotify music control (play songs, albums, artists)
@@ -46,6 +46,7 @@ pip install -r requirements.txt
 Choose ONE of the following options:
 
 #### Option A: Use Anthropic Claude Sonnet
+
 1. Obtain an API key from Anthropic
 2. Add to your `.env` file:
    ```
@@ -53,6 +54,7 @@ Choose ONE of the following options:
    ```
 
 #### Option B: Use Ollama locally
+
 1. Install Ollama:
    - Download from [ollama.com/download](https://ollama.com/download/)
    - OR use Docker: [Docker Hub - ollama/ollama](https://hub.docker.com/r/ollama/ollama)
@@ -72,7 +74,15 @@ Choose ONE of the following options:
    SPOTIFY_CLIENT_SECRET="your_spotify_client_secret"
    ```
 
-### 4. For Voice Commands (Optional)
+### 4. Weather API Key (Optional)
+
+1. Sign up for a free API key at [OpenWeatherMap](https://openweathermap.org/api)
+2. Add to your `.env` file:
+   ```
+   WEATHER_API_KEY="your_openweathermap_api_key"
+   ```
+
+### 5. For Voice Commands (Optional)
 
 If you want to use voice input:
 
@@ -112,6 +122,7 @@ python assistant.py --audio --local
 ## First Run
 
 On first execution, you'll need to authorize Gmail access:
+
 1. The program will open a browser authentication page
 2. Log in to your Gmail account
 3. Grant the requested permissions

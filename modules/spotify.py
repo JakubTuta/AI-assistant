@@ -43,6 +43,7 @@ class AuthHandler(http.server.SimpleHTTPRequestHandler):
             )
 
 
+@decorators.JobRegistry.register_service
 class Spotify:
     ENV_SPOTIFY_CLIENT_ID = "SPOTIFY_CLIENT_ID"
     ENV_SPOTIFY_CLIENT_SECRET = "SPOTIFY_CLIENT_SECRET"
@@ -60,39 +61,32 @@ class Spotify:
     def __init__(self, **kwargs):
         self.albums = {}
 
-        self.client_id = os.getenv(Spotify.ENV_SPOTIFY_CLIENT_ID, None)
-        self.client_secret = os.getenv(Spotify.ENV_SPOTIFY_CLIENT_SECRET, None)
+        self.client_id = os.getenv(Spotify.ENV_SPOTIFY_CLIENT_ID)
+        self.client_secret = os.getenv(Spotify.ENV_SPOTIFY_CLIENT_SECRET)
 
-        if self.client_id is None or self.client_secret is None:
+        if not self.client_id or not self.client_secret:
             raise Exception(
                 "SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be set in environment variables"
             )
 
         self.access_token, self.refresh_token = self._get_tokens_from_cache()
-        if self.access_token is not None and self.refresh_token is not None:
-            self.device_id = self._get_active_devices()
 
-            if self.device_id is None:
-                raise Exception("Spotify is not running")
+        if not self.access_token or not self.refresh_token:
+            self.auth_code = self._get_auth_code()
+            if not self.auth_code:
+                raise Exception("Failed to get authorization code")
 
-            self._prefetch_data()
-
-            return
-
-        self.auth_code = self._get_auth_code()
-        if self.auth_code is None:
-            raise Exception("Failed to get authorization code")
-
-        self.access_token, self.refresh_token = self._get_tokens()
-        if self.access_token is None or self.refresh_token is None:
-            raise Exception("Failed to get access token and refresh token")
+            self.access_token, self.refresh_token = self._get_tokens()
+            if not self.access_token or not self.refresh_token:
+                raise Exception("Failed to get access token and refresh token")
 
         self.device_id = self._get_active_devices()
-        if self.device_id is None:
-            raise Exception("Spotify is not running")
+        if not self.device_id:
+            raise Exception("No active Spotify device found")
 
-        self._prefetch_data()
+        # self._prefetch_data()
 
+    @decorators.JobRegistry.register_method
     def toggle_playback(self, **kwargs) -> None:
         """
         Toggle Spotify music playback state between play and pause.
@@ -115,6 +109,7 @@ class Spotify:
             self.start_playback(**kwargs)
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
+    @decorators.JobRegistry.register_method
     def start_playback(self, **kwargs) -> None:
         """
         Starts Spotify music playback.
@@ -144,6 +139,7 @@ class Spotify:
         print("Playback resumed")
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
+    @decorators.JobRegistry.register_method
     def stop_playback(self, **kwargs) -> None:
         """
         Stops Spotify music playback.
@@ -173,6 +169,7 @@ class Spotify:
         print("Playback paused")
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
+    @decorators.JobRegistry.register_method
     def next_song(self, **kwargs) -> None:
         """
         Skips to the next song in Spotify music playback.
@@ -202,6 +199,7 @@ class Spotify:
         print("Skipped a song")
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
+    @decorators.JobRegistry.register_method
     def previous_song(self, **kwargs) -> None:
         """
         Skips to the previous song in Spotify music playback.
@@ -231,6 +229,7 @@ class Spotify:
         print("Skipped to the previous song")
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
+    @decorators.JobRegistry.register_method
     def volume_up(self, **kwargs) -> None:
         """
         Increases Spotify playback volume by 10%.
@@ -255,6 +254,7 @@ class Spotify:
         print(f"Volume increased to {new_volume}%")
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
+    @decorators.JobRegistry.register_method
     def volume_down(self, **kwargs) -> None:
         """
         Decreases Spotify playback volume by 10%.
@@ -279,6 +279,7 @@ class Spotify:
         print(f"Volume decreased to {new_volume}%")
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
+    @decorators.JobRegistry.register_method
     def max_volume(self, **kwargs) -> None:
         """
         Sets Spotify playback volume to maximum (100%).
@@ -291,10 +292,11 @@ class Spotify:
         Returns:
             None
         """
+
         self.set_volume(volume=100, **kwargs)
-        print("Volume set to maximum (100%)")
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
+    @decorators.JobRegistry.register_method
     def set_volume(self, volume: int, **kwargs) -> None:
         """
         Sets Spotify playback volume to a specific level.
@@ -322,6 +324,8 @@ class Spotify:
 
         response = requests.put(url, headers=headers)
         response.raise_for_status()
+
+        print(f"Volume set to {volume}%")
 
     def _is_playback_playing(self):
         playback_state = self._get_playback_state()

@@ -6,6 +6,7 @@ from datetime import datetime
 import simplegmail
 from simplegmail.message import Message
 
+from helpers import decorators
 from helpers.audio import Audio
 from helpers.cache import Cache
 
@@ -22,6 +23,7 @@ class Gmail:
         creds_file="credentials/gmail_token.json",
     )
 
+    @decorators.JobRegistry.register_job
     @staticmethod
     def check_new_emails(**kwargs) -> None:
         """
@@ -56,6 +58,7 @@ class Gmail:
             else:
                 print(formatted_message)
 
+    @decorators.JobRegistry.register_job
     @staticmethod
     def start_checking_new_emails(delay: int = 15, **kwargs) -> None:
         """
@@ -79,6 +82,13 @@ class Gmail:
             Audio.text_to_speech(f"Checking new emails every {delay} minutes...")
         print(f"Checking new emails every {delay} minutes...")
 
+        try:
+            delay = int(delay)
+
+        except ValueError:
+            print("Invalid delay value. Using default value of 15 minutes.")
+            delay = 15
+
         def wrapper():
             while True:
                 if "check_new_emails" not in get_employer()._active_jobs:
@@ -94,6 +104,7 @@ class Gmail:
 
             get_employer()._active_jobs["check_new_emails"] = thread
 
+    @decorators.JobRegistry.register_job
     @staticmethod
     def stop_checking_new_emails(**kwargs) -> None:
         """

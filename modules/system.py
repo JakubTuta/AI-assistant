@@ -1,9 +1,11 @@
 import os
 
+from helpers import decorators
 from helpers.audio import Audio
 
 
 class System:
+    @decorators.JobRegistry.register_job
     @staticmethod
     def close_computer(**kwargs) -> None:
         """

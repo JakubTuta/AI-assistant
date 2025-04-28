@@ -12,6 +12,7 @@ class Weather:
     _api_key = os.environ.get("WEATHER_API_KEY")
 
     @decorators.capture_response
+    @decorators.JobRegistry.register_job
     @staticmethod
     def weather(city: str, **kwargs) -> str:
         """

@@ -1,32 +1,21 @@
 import argparse
-import sys
 import time
 
 import dotenv
 import keyboard
 
 from helpers.audio import Audio
-from helpers.recognizer import Recognizer
 from modules import server
 from modules.employer import Employer
 
 dotenv.load_dotenv()
 
 
-def on_key_combination(employer: Employer) -> None:
-    try:
-        user_input = str(Recognizer.recognize_speech_from_mic())
-
-        print(f"\nTranscribed text: {user_input}")
-
-        employer.job_on_command(user_input)
-
-    except Exception as e:
-        print(f"Error: {e}")
-
-
-def speech_to_text(local: bool) -> None:
+def speech_to_text(local: bool, run_server: bool) -> None:
     employer = Employer(audio=True, local=local)
+
+    if run_server:
+        server.start_app(employer_instance=employer)
 
     Audio.play_audio_from_file("voice/bot/ready.wav")
 
@@ -34,7 +23,7 @@ def speech_to_text(local: bool) -> None:
     print("\nListening for key combination (Ctrl + L)...")
     keyboard.add_hotkey(
         hotkey="ctrl+l",
-        callback=on_key_combination,
+        callback=employer.speak,
         args=(employer,),
     )
 
@@ -48,8 +37,11 @@ def speech_to_text(local: bool) -> None:
             break
 
 
-def text_to_text(local: bool) -> None:
+def text_to_text(local: bool, run_server: bool) -> None:
     employer = Employer(audio=False, local=local)
+
+    if run_server:
+        server.start_app(employer_instance=employer)
 
     print("Listening for text input...")
 
@@ -82,19 +74,18 @@ if __name__ == "__main__":
         help="Use local processing",
     )
     parser.add_argument(
-        "--audio-local",
-        "--local-audio",
-        "-al",
-        "-la",
+        "--server",
+        "-s",
         action="store_true",
-        help="Use local audio processing",
+        help="Run the server to receive button presses",
     )
     args = parser.parse_args()
 
-    audio = args.audio or args.audio_local
-    local = args.local or args.audio_local
+    audio = args.audio
+    local = args.local
+    run_server = args.server
 
     if audio:
-        speech_to_text(local=local)
+        speech_to_text(local=local, run_server=run_server)
     else:
-        text_to_text(local=local)
+        text_to_text(local=local, run_server=run_server)
