@@ -45,12 +45,12 @@ class AI:
         else:
             return AI._ask_question_remote(question)
 
-    @decorators.JobRegistry.register_job
     @staticmethod
     def get_function_to_call(
         user_input: str,
         available_tools: typing.List[typing.Callable],
         local_model: bool,
+        **kwargs,
     ) -> typing.Optional[typing.Dict[str, typing.Any]]:
         if local_model:
             return AI._get_function_to_call_local(user_input, available_tools)
@@ -109,9 +109,6 @@ class AI:
                 ],
             },
         )
-
-        print(response)
-        print(response.json())
 
         response.raise_for_status()
 

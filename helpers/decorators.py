@@ -22,12 +22,23 @@ class JobRegistry:
             # Used as @register_job without parentheses
             func = name
             job_name = func.__name__
+
+            # Check if function has documentation
+            if not func.__doc__:
+                print(f"No documentation found for job '{job_name}'")
+                os._exit(1)
+
             cls.available_jobs[job_name] = func
             return func
 
         # Otherwise, we're called with parameters as @register_job() or @register_job("name")
         def decorator(func):
             job_name = name or func.__name__
+
+            # Check if function has documentation
+            if not func.__doc__:
+                print(f"No documentation found for job '{job_name}'")
+                os._exit(1)
 
             # Wrap the function to ensure it handles arguments properly
             @functools.wraps(func)
@@ -67,6 +78,16 @@ class JobRegistry:
         """
 
         def decorator(method):
+            # Check if method has documentation
+            if not method.__doc__:
+                method_display_name = (
+                    method.__qualname__
+                    if hasattr(method, "__qualname__")
+                    else method.__name__
+                )
+                print(f"No documentation found for method '{method_display_name}'")
+                os._exit(1)
+
             # Get the class from the method using __qualname__
             # This works even if the decorator is applied before the class is fully defined
             if service_name is None:
@@ -110,9 +131,11 @@ def exit_on_exception(func: typing.Callable[..., T]) -> typing.Callable[..., T]:
     def wrapper(*args, **kwargs) -> T:
         try:
             return func(*args, **kwargs)
+
         except Exception as e:
             class_name = args[0].__class__.__name__ if args else "Unknown"
-            print(f"\n[{class_name}]: {e}")
+            function_name = func.__name__ if hasattr(func, "__name__") else "Unknown"
+            print(f"\n[{class_name} - {function_name}]: {e}")
 
             os._exit(1)
 
@@ -150,9 +173,11 @@ def retry_on_unauthorized(refresh_token_method_name: str):
                 elif hasattr(e, "response") and getattr(
                     e.response, "status_code", None
                 ) not in range(200, 300):
-                    print(f"\nError in {func.__name__}: {e}")
-
-                raise
+                    class_name = args[0].__class__.__name__ if args else "Unknown"
+                    function_name = (
+                        func.__name__ if hasattr(func, "__name__") else "Unknown"
+                    )
+                    print(f"\n[{class_name} - {function_name}]: {e}")
 
         return wrapper
 
@@ -183,11 +208,13 @@ def capture_response(
 
         try:
             response = func(*args, **kwargs)
+
         except Exception as e:
             class_name = args[0].__class__.__name__ if args else "Unknown"
-            print(f"\n[{class_name}]: {e}")
+            function_name = func.__name__ if hasattr(func, "__name__") else "Unknown"
+            print(f"\n[{class_name} - {function_name}]: {e}")
 
-            return None
+            return
 
         str_response = str(response) if response is not None else ""
 
@@ -221,7 +248,7 @@ def capture_exception(
             return func(*args, **kwargs)
         except Exception as e:
             class_name = args[0].__class__.__name__ if args else "Unknown"
-            print(f"\n[{class_name}]: {e}")
-            return None
+            function_name = func.__name__ if hasattr(func, "__name__") else "Unknown"
+            print(f"\n[{class_name} - {function_name}]: {e}")
 
     return wrapper
