@@ -15,6 +15,7 @@ A versatile personal assistant powered by AI that accepts both text and voice co
 
 - **AI Model Options**
   - Anthropic Claude Sonnet (via API key)
+  - Google Gemini (via API key)
   - Ollama models (locally installed)
 
 ### To see all commands, see commands.json file
@@ -53,7 +54,15 @@ Choose ONE of the following options:
    ANTHROPIC_API_KEY="your_api_key"
    ```
 
-#### Option B: Use Ollama locally
+#### Option B: Use Google Gemini
+
+1. Obtain an API key from Google
+2. Add to your `.env` file:
+   ```
+   GEMINI_API_KEY="your_api_key"
+   ```
+
+#### Option C: Use Ollama locally
 
 1. Install Ollama:
    - Download from [ollama.com/download](https://ollama.com/download/)

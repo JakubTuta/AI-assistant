@@ -365,8 +365,6 @@ class Spotify:
 
         self.set_volume(volume=new_volume, **kwargs)
 
-        print(f"Volume increased to {new_volume}%")
-
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method
     def volume_down(self, **kwargs) -> None:
@@ -389,8 +387,6 @@ class Spotify:
         new_volume = max(current_volume - 10, 0)
 
         self.set_volume(volume=new_volume, **kwargs)
-
-        print(f"Volume decreased to {new_volume}%")
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method

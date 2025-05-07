@@ -19,9 +19,16 @@ class Employer:
         self.local_model = local
         self.service_instances = {}
 
+        self.ai_model = AI(local=local)
+
     @decorators.exit_on_exception
     def speak(self) -> None:
         user_input = str(Recognizer.recognize_speech_from_mic())
+
+        if not user_input:
+            print("I didn't hear anything.")
+
+            return
 
         print(f"\nTranscribed text: {user_input}")
 
@@ -31,7 +38,7 @@ class Employer:
         self._refresh_available_jobs()
 
         if (
-            bot_response := AI.get_function_to_call(
+            bot_response := self.ai_model.get_function_to_call(
                 user_input, self.available_functions, self.local_model
             )
         ) is None:
@@ -136,7 +143,10 @@ class Employer:
 
         for service_name, service_class in decorators.JobRegistry._services.items():
             if service_name not in self.service_instances:
-                self.service_instances[service_name] = service_class()
+                self.service_instances[service_name] = service_class(
+                    local=self.local_model,
+                    audio=self.audio,
+                )
 
         for reg in decorators.JobRegistry._pending_registrations:
             service = self.service_instances[reg["service"]]

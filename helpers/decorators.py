@@ -230,25 +230,29 @@ def capture_response(
 
 def capture_exception(
     func: typing.Callable[..., T],
-) -> typing.Callable[..., typing.Optional[T]]:
+) -> typing.Callable[..., typing.Union[T, str]]:
     """
-    Decorator that captures all exceptions and prints them as "[class name]: exception".
+    Decorator that captures all exceptions and returns them as "[class name]: exception".
     Works for both static and instance methods of classes.
 
     Args:
         func: The method to be decorated
 
     Returns:
-        The wrapped function that handles exceptions and returns None on error
+        The wrapped function that handles exceptions and returns error message on exception
     """
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs) -> typing.Optional[T]:
+    def wrapper(*args, **kwargs) -> typing.Union[T, str]:
         try:
             return func(*args, **kwargs)
         except Exception as e:
             class_name = args[0].__class__.__name__ if args else "Unknown"
             function_name = func.__name__ if hasattr(func, "__name__") else "Unknown"
-            print(f"\n[{class_name} - {function_name}]: {e}")
+
+            error_message = f"\n[{class_name} - {function_name}]: {e}"
+            print(error_message)
+
+            return error_message
 
     return wrapper

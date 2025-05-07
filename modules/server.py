@@ -11,7 +11,7 @@ employer: typing.Optional[Employer] = None
 
 """Buttons
 
-        UP                      A
+         UP                     A
 LEFT            RIGHT           B
         DOWN
 
@@ -19,7 +19,7 @@ LEFT            RIGHT           B
 
 """Buttons mapping
     A = speak
-    B = help
+    B = toggle playback
     UP = volume up
     DOWN = volume down
     LEFT = previous song
@@ -29,15 +29,16 @@ LEFT            RIGHT           B
 
 @app.route("/button-pressed/<key>/", methods=["GET"])
 def button_pressed(key):
-    print(f"Button {key} pressed.")
-
     if employer is not None:
+        employer._refresh_available_jobs()
+
         match key:
             case "A":
                 employer.speak()
 
             case "B":
-                Employer.help(audio=True)
+                if function := employer.available_jobs.get("toggle_playback"):
+                    function()
 
             case "UP":
                 if function := employer.available_jobs.get("volume_up"):

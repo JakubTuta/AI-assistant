@@ -1,20 +1,42 @@
+import base64
 import os
 import typing
-from threading import local
 
+import anthropic
+import numpy as np
 import ollama
 import requests
+from google import genai
 
-import helpers.tools as tools
+import helpers.model as helpers_model
 from helpers import decorators
 from helpers.audio import Audio
 
 
+@decorators.JobRegistry.register_service
 class AI:
+    client = None
+
+    def __init__(self, local: bool, **kwargs) -> None:
+        if local:
+            return
+
+        response = helpers_model.get_model()
+        if response is None:
+            raise Exception(
+                "You need to set either the GEMINI_API_KEY or ANTHROPIC_API_KEY environment variable."
+            )
+
+        model, api_key = response
+        if model == "gemini":
+            self.client = genai.Client(api_key=api_key)
+
+        elif model == "sonnet":
+            self.client = anthropic.Anthropic(api_key=api_key)
+
     @decorators.capture_response
-    @decorators.JobRegistry.register_job
-    @staticmethod
-    def ask_question(question: str = "", **kwargs) -> str:
+    @decorators.JobRegistry.register_method
+    def ask_question(self, question: str = "", **kwargs) -> str:
         """
         Asks a question and retrieves the answer from the AI assistant.
 
@@ -40,27 +62,36 @@ class AI:
 
         local_model = kwargs.get("local_model", False)
         if local_model:
-            return AI._ask_question_local(question)
+            return self._ask_question_local(question)
 
         else:
-            return AI._ask_question_remote(question)
+            return self._ask_question_remote(question)
 
-    @staticmethod
     def get_function_to_call(
+        self,
         user_input: str,
         available_tools: typing.List[typing.Callable],
         local_model: bool,
         **kwargs,
     ) -> typing.Optional[typing.Dict[str, typing.Any]]:
+        if not user_input or not available_tools:
+            return None
+
         if local_model:
-            return AI._get_function_to_call_local(user_input, available_tools)
+            return self._get_function_to_call_local(user_input, available_tools)
 
         else:
-            return AI._get_function_to_call_remote(user_input, available_tools)
+            return self._get_function_to_call_remote(user_input, available_tools)
 
-    @decorators.exit_on_exception
-    @staticmethod
-    def _ask_question_local(question: str) -> str:
+    def explain_screenshot(self, screenshot: np.ndarray, local_model: bool) -> str:
+        if local_model:
+            return self._explain_screenshot_local(screenshot)
+
+        else:
+            return self._explain_screenshot_remote(screenshot)
+
+    @decorators.capture_exception
+    def _ask_question_local(self, question: str) -> str:
         if (model := os.getenv("AI_MODEL", None)) is None:
             raise Exception("AI_MODEL environment variable is not set.")
 
@@ -81,52 +112,26 @@ class AI:
 
         return answer
 
-    @decorators.exit_on_exception
-    @staticmethod
-    def _ask_question_remote(question: str) -> str:
-        if (api_key := os.getenv("ANTHROPIC_API_KEY", None)) is None:
-            raise Exception("ANTHROPIC_API_KEY environment variable is not set.")
+    @decorators.capture_exception
+    def _ask_question_remote(self, question: str) -> str:
+        system_instructions = "Keep the answer short and simple."
 
-        url = "https://api.anthropic.com/v1/messages"
-
-        headers = {
-            "anthropic-version": "2023-06-01",
-            "x-api-key": api_key,
-            "Content-Type": "application/json",
-        }
-
-        response = requests.post(
-            url,
-            headers=headers,
-            json={
-                "model": "claude-3-7-sonnet-20250219",
-                "max_tokens": 1024,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": f"Keep the answer short and simple. {question}",
-                    },
-                ],
-            },
+        response = helpers_model.send_message(
+            client=self.client,
+            message=question,
+            system_instructions=system_instructions,
         )
 
-        response.raise_for_status()
+        answer = helpers_model.get_text_from_response(response)
 
-        response_data = response.json()
-
-        content_list = response_data.get("content", [])
-
-        answer = ""
-        for item in content_list:
-            if item.get("type") == "text":
-                answer += item.get("text", "")
+        if answer is None:
+            return "Error: Could not retrieve an answer."
 
         return answer
 
     @decorators.exit_on_exception
-    @staticmethod
     def _get_function_to_call_local(
-        user_input: str, available_tools: typing.List[typing.Callable]
+        self, user_input: str, available_tools: typing.List[typing.Callable]
     ) -> typing.Optional[typing.Dict[str, typing.Any]]:
         if (model := os.getenv("AI_MODEL", None)) is None:
             raise Exception("AI_MODEL environment variable is not set.")
@@ -163,10 +168,29 @@ class AI:
             }
 
     @decorators.exit_on_exception
-    @staticmethod
     def _get_function_to_call_remote(
-        user_input: str, available_tools: typing.List[typing.Callable]
+        self, user_input: str, available_tools: typing.List[typing.Callable]
     ) -> typing.Optional[typing.Dict[str, typing.Any]]:
+        response = helpers_model.send_message(
+            client=self.client, message=user_input, available_tools=available_tools
+        )
+
+        function_to_call = helpers_model.get_function_from_response(response)
+
+        return function_to_call
+
+    @decorators.capture_exception
+    def _explain_screenshot_local(
+        self,
+        screenshot: np.ndarray,
+    ):
+        return ""
+
+    @decorators.capture_exception
+    def _explain_screenshot_remote(
+        self,
+        screenshot: np.ndarray,
+    ) -> str:
         if (api_key := os.getenv("ANTHROPIC_API_KEY", None)) is None:
             raise Exception("ANTHROPIC_API_KEY environment variable is not set.")
 
@@ -178,14 +202,7 @@ class AI:
             "Content-Type": "application/json",
         }
 
-        schema_functions = [tools.function_to_schema(func) for func in available_tools]
-
-        messages = [
-            {
-                "role": "user",
-                "content": user_input,
-            },
-        ]
+        image_data = base64.b64encode(screenshot).decode("utf-8")
 
         response = requests.post(
             url,
@@ -193,27 +210,28 @@ class AI:
             json={
                 "model": "claude-3-7-sonnet-20250219",
                 "max_tokens": 1024,
-                "tools": schema_functions,
-                "messages": messages,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "What's in this image? If you see a highlighted text, then focus on that, else explain the image.",
+                            },
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",
+                                    "data": image_data,
+                                },
+                            },
+                        ],
+                    }
+                ],
             },
         )
 
-        response.raise_for_status()
+        print(response.json())
 
-        response_data = response.json()
-
-        content_list = response_data.get("content", [])
-
-        function_name = "ask_question"
-        function_args = {}
-
-        for item in content_list:
-            if item.get("type") == "tool_use":
-                function_name = item.get("name")
-                function_args = item.get("input", {})
-                break
-
-        return {
-            "name": function_name,
-            "args": function_args,
-        }
+        return ""

@@ -42,7 +42,7 @@ class LeagueOfLegends:
             mouse_controller = MouseController()
 
             while True:
-                screenshot = ScreenReader.take_screenshot(gray=True)
+                screenshot = ScreenReader.take_screenshot(gray=True, target="main")
 
                 if (
                     accept_object := ScreenReader.find_text_in_screenshot(

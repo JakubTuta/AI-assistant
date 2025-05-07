@@ -5,8 +5,6 @@ from google.cloud.speech_v1.types.cloud_speech import RecognizeResponse
 from helpers import decorators
 from helpers.audio import Audio
 
-dotenv.load_dotenv()
-
 
 class Recognizer:
     _recognizer = sr.Recognizer()

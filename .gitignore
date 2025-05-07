@@ -4,3 +4,4 @@ cache.json
 venv/
 .env
 *test*
+screenshots/
