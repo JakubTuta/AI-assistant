@@ -59,7 +59,7 @@ class Spotify:
     SCOPE = "user-read-playback-state user-modify-playback-state"
 
     @decorators.capture_exception
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.albums = {}
 
         self.client_id = os.getenv(Spotify.ENV_SPOTIFY_CLIENT_ID)
@@ -87,7 +87,7 @@ class Spotify:
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method
-    def play_songs(self, title: str, artist: str, **kwargs) -> typing.Optional[str]:
+    def play_songs(self, title: str, artist: str) -> typing.Optional[str]:
         """
         Plays a song or an album on Spotify based on the provided title and artist.
 
@@ -100,6 +100,9 @@ class Spotify:
         Returns:
             None
         """
+
+        if not title and not artist:
+            self.start_playback()
 
         search_response = self._search(query=title, artist=artist)
 
@@ -145,7 +148,7 @@ class Spotify:
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method
-    def add_to_queue(self, title: str, artist: str, **kwargs) -> None:
+    def add_to_queue(self, title: str, artist: str) -> None:
         """
         Adds a song or an album to the Spotify queue based on the provided title and artist.
 
@@ -201,7 +204,7 @@ class Spotify:
             response.raise_for_status()
 
     @decorators.JobRegistry.register_method
-    def toggle_playback(self, **kwargs) -> None:
+    def toggle_playback(self) -> None:
         """
         Toggle Spotify music playback state between play and pause.
 
@@ -217,14 +220,14 @@ class Spotify:
         is_playing = self._is_playback_playing()
 
         if is_playing:
-            self.stop_playback(**kwargs)
+            self.stop_playback()
 
         else:
-            self.start_playback(**kwargs)
+            self.start_playback()
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method
-    def start_playback(self, **kwargs) -> None:
+    def start_playback(self) -> None:
         """
         Starts Spotify music playback.
 
@@ -254,7 +257,7 @@ class Spotify:
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method
-    def stop_playback(self, **kwargs) -> None:
+    def stop_playback(self) -> None:
         """
         Stops Spotify music playback.
 
@@ -284,7 +287,7 @@ class Spotify:
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method
-    def next_song(self, **kwargs) -> None:
+    def next_song(self) -> None:
         """
         Skips to the next song in Spotify music playback.
 
@@ -314,7 +317,7 @@ class Spotify:
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method
-    def previous_song(self, **kwargs) -> None:
+    def previous_song(self) -> None:
         """
         Skips to the previous song in Spotify music playback.
 
@@ -344,7 +347,7 @@ class Spotify:
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method
-    def volume_up(self, **kwargs) -> None:
+    def volume_up(self) -> None:
         """
         Increases Spotify playback volume by 10%.
 
@@ -363,11 +366,11 @@ class Spotify:
         current_volume = playback_state.get("device", {}).get("volume_percent", 50)
         new_volume = min(current_volume + 10, 100)
 
-        self.set_volume(volume=new_volume, **kwargs)
+        self.set_volume(volume=new_volume)
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method
-    def volume_down(self, **kwargs) -> None:
+    def volume_down(self) -> None:
         """
         Decreases Spotify playback volume by 10%.
 
@@ -386,11 +389,11 @@ class Spotify:
         current_volume = playback_state.get("device", {}).get("volume_percent", 50)
         new_volume = max(current_volume - 10, 0)
 
-        self.set_volume(volume=new_volume, **kwargs)
+        self.set_volume(volume=new_volume)
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method
-    def max_volume(self, **kwargs) -> None:
+    def max_volume(self) -> None:
         """
         Sets Spotify playback volume to maximum (100%).
 
@@ -403,11 +406,11 @@ class Spotify:
             None
         """
 
-        self.set_volume(volume=100, **kwargs)
+        self.set_volume(volume=100)
 
     @decorators.retry_on_unauthorized("_refresh_access_token")
     @decorators.JobRegistry.register_method
-    def set_volume(self, volume: int, **kwargs) -> None:
+    def set_volume(self, volume: int) -> None:
         """
         Sets Spotify playback volume to a specific level.
 

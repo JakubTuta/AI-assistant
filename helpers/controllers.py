@@ -11,7 +11,7 @@ class MouseController(pynput.mouse.Controller):
         super().__init__()
 
     @staticmethod
-    def idle_mouse(**kwargs) -> None:
+    def idle_mouse() -> None:
         """
         Simulates mouse idle activity by using the MouseController class to move the mouse.
         This function creates an instance of the MouseController class and calls its idle_mouse method to simulate mouse movement.

@@ -52,7 +52,7 @@ class Employer:
     @decorators.capture_response
     @decorators.JobRegistry.register_job
     @staticmethod
-    def help(**kwargs) -> str:
+    def help() -> str:
         """
         Provides help information about available commands.
 
@@ -81,7 +81,7 @@ class Employer:
     @decorators.capture_response
     @decorators.JobRegistry.register_job
     @staticmethod
-    def stop_active_jobs(**kwargs) -> str:
+    def stop_active_jobs() -> str:
         """
         Stops all active jobs by terminating the threads associated with them.
         This function iterates through the active jobs and joins each thread to ensure they are stopped.
@@ -109,7 +109,7 @@ class Employer:
 
     @decorators.JobRegistry.register_job
     @staticmethod
-    def exit(**kwargs) -> None:
+    def exit() -> None:
         """
         Terminates the process immediately without calling cleanup handlers, flushing stdio buffers, etc.
         This function is intended to be used for emergency exits only. It should not be used for normal program termination.

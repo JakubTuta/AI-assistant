@@ -25,7 +25,7 @@ class Gmail:
 
     @decorators.JobRegistry.register_job
     @staticmethod
-    def check_new_emails(**kwargs) -> None:
+    def check_new_emails() -> None:
         """
         Checks for new emails on Gmail and notifies the user either via audio or print.
 
@@ -60,7 +60,7 @@ class Gmail:
 
     @decorators.JobRegistry.register_job
     @staticmethod
-    def start_checking_new_emails(delay: int = 15, **kwargs) -> None:
+    def start_checking_new_emails(delay: int = 15) -> None:
         """
         Starts a background thread that checks for new emails at regular intervals.
         This function creates and starts a daemon thread that runs indefinitely,
@@ -94,7 +94,7 @@ class Gmail:
                 if "check_new_emails" not in get_employer()._active_jobs:
                     break
 
-                Gmail.check_new_emails(audio=audio)
+                Gmail.check_new_emails()
                 time.sleep(60 * delay)
 
         if "check_new_emails" not in get_employer()._active_jobs:
@@ -106,7 +106,7 @@ class Gmail:
 
     @decorators.JobRegistry.register_job
     @staticmethod
-    def stop_checking_new_emails(**kwargs) -> None:
+    def stop_checking_new_emails() -> None:
         """
         Stops the background thread that checks for new emails at regular intervals.
         This function stops the daemon thread that was started by the `get_employer().infinitely_check_new_emails` method.

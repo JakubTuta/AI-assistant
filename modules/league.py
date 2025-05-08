@@ -18,7 +18,7 @@ def get_employer():
 class LeagueOfLegends:
     @decorators.JobRegistry.register_job
     @staticmethod
-    def accept_game(**kwargs) -> None:
+    def accept_game() -> None:
         """
         Accepts League of Legends queue pop.
         Starts a background thread that continuously takes screenshots and searches for the text "accept!".
@@ -78,7 +78,7 @@ class LeagueOfLegends:
 
     @decorators.JobRegistry.register_job
     @staticmethod
-    def queue_up(**kwargs) -> None:
+    def queue_up() -> None:
         """
         Runs the League of Legends game by starting the shortcut file located on the desktop.
 
@@ -101,7 +101,7 @@ class LeagueOfLegends:
 
     @decorators.JobRegistry.register_job
     @staticmethod
-    def close_game(**kwargs) -> None:
+    def close_game() -> None:
         """
         Closes the League of Legends application by terminating the process.
 

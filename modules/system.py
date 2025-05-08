@@ -8,7 +8,7 @@ from helpers.cache import Cache
 class System:
     @decorators.JobRegistry.register_job
     @staticmethod
-    def close_computer(**kwargs) -> None:
+    def close_computer() -> None:
         """
         Shuts down the computer immediately.
         Executes the system command to shut down the computer forcefully and immediately.

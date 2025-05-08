@@ -17,7 +17,7 @@ class Screen:
 
     @decorators.JobRegistry.register_job
     @staticmethod
-    def save_screenshot(**kwargs) -> None:
+    def save_screenshot() -> None:
         """
         Save a screenshot of the current screen to a file.
 
@@ -48,7 +48,7 @@ class Screen:
     @decorators.capture_response
     @decorators.JobRegistry.register_job
     @staticmethod
-    def explain_screenshot(user_input: str, **kwargs):
+    def explain_screenshot(user_input: str):
         """
         Explain the contents of the current screen.
         Takes a screenshot and sends it to the AI model for analysis.
@@ -69,7 +69,7 @@ class Screen:
 
         screenshot = ScreenReader.take_screenshot(target="active")
 
-        ai_model = AI(local=False)
+        ai_model = AI()
         response = ai_model.explain_screenshot(user_input, screenshot)
 
         print(response)

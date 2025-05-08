@@ -112,10 +112,10 @@ def function_to_schema_ollama(func: typing.Callable) -> typing.Dict[str, typing.
         if not is_kwarg and param_name != "kwargs" and not param_name.startswith("*"):
             required.append(param_name)
 
-    # Handle **kwargs case separately by checking the function signature
+    # Handle  case separately by checking the function signature
     sig = inspect.signature(func)
     for param_name, param in sig.parameters.items():
-        if param.kind == inspect.Parameter.VAR_KEYWORD:  # This is **kwargs
+        if param.kind == inspect.Parameter.VAR_KEYWORD:  # This is
             # Don't add kwargs to the properties or required list
             pass
         elif param_name not in properties:
@@ -221,10 +221,10 @@ def function_to_schema_gemini(func: typing.Callable) -> typing.Dict[str, typing.
         if not is_kwarg and param_name != "kwargs" and not param_name.startswith("*"):
             required.append(param_name)
 
-    # Handle **kwargs case separately by checking the function signature
+    # Handle  case separately by checking the function signature
     sig = inspect.signature(func)
     for param_name, param in sig.parameters.items():
-        if param.kind == inspect.Parameter.VAR_KEYWORD:  # This is **kwargs
+        if param.kind == inspect.Parameter.VAR_KEYWORD:  # This is
             # Don't add kwargs to the properties or required list
             pass
         elif param_name not in properties:
@@ -321,10 +321,10 @@ def function_to_schema_anthropic(func: typing.Callable) -> typing.Dict[str, typi
         if not is_kwarg and param_name != "kwargs" and not param_name.startswith("*"):
             required.append(param_name)
 
-    # Handle **kwargs case separately by checking the function signature
+    # Handle  case separately by checking the function signature
     sig = inspect.signature(func)
     for param_name, param in sig.parameters.items():
-        if param.kind == inspect.Parameter.VAR_KEYWORD:  # This is **kwargs
+        if param.kind == inspect.Parameter.VAR_KEYWORD:  # This is
             # Don't add kwargs to the properties or required list
             pass
         elif param_name not in properties:

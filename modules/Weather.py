@@ -15,7 +15,7 @@ class Weather:
     @decorators.capture_response
     @decorators.JobRegistry.register_job
     @staticmethod
-    def weather(city: str, **kwargs) -> str:
+    def weather(city: str) -> str:
         """
         Retrieves and outputs the weather information for a given city. If no city is provided,
         it uses the user's current geolocation to determine the city.

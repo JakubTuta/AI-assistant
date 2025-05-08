@@ -190,7 +190,7 @@ def get_function_from_response(
         if (
             function_call := response.candidates[0].content.parts[0].function_call  # type: ignore
         ) is None:
-            return None
+            return
 
         function_name = function_call.name
         function_args = function_call.args
@@ -215,10 +215,7 @@ def get_function_from_response(
 
     elif isinstance(response, ollama.ChatResponse):
         if response.message.tool_calls is None:
-            return {
-                "name": "ask_question",
-                "args": {},
-            }
+            return
 
         for tool in response.message.tool_calls:
             function_name = tool.function.name

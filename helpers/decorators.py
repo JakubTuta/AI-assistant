@@ -5,6 +5,7 @@ import typing
 import requests
 
 from helpers.audio import Audio
+from helpers.cache import Cache
 
 T = typing.TypeVar("T")
 
@@ -200,12 +201,7 @@ def capture_response(
     """
 
     @functools.wraps(func)
-    def wrapper(*args: typing.Any, **kwargs: typing.Any) -> typing.Optional[str]:
-        if "audio" not in kwargs:
-            kwargs["audio"] = False
-
-        is_audio = kwargs["audio"]
-
+    def wrapper(*args, **kwargs) -> typing.Optional[str]:
         try:
             response = func(*args, **kwargs)
 
@@ -218,10 +214,10 @@ def capture_response(
 
         str_response = str(response) if response is not None else ""
 
-        if is_audio:
+        audio = Cache.get_audio()
+        if audio:
             Audio.text_to_speech(str_response)
-        else:
-            print(str_response)
+        print(str_response)
 
         return str_response
 

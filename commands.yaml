@@ -5,9 +5,6 @@ general:
   help:
     name: "help"
     description: "List all commands"
-  ask:
-    name: "ask question"
-    description: "Ask a question to AI assistant"
   exit:
     name: "exit"
     description: "Exits program"
@@ -17,6 +14,14 @@ general:
   stop_jobs:
     name: "stop active jobs"
     description: "Stops all active jobs"
+
+ai:
+  ask_question:
+    name: "ask question"
+    description: "Ask a question to AI assistant"
+  explain_screenshot:
+    name: "explain screenshot"
+    description: "Explain the content of a screenshot, focusing on the highlighted text"
 
 # Spotify commands
 spotify:
@@ -71,6 +76,9 @@ utilities:
   weather:
     name: "weather"
     description: "Checks weather for a given city"
+  save_screenshot:
+    name: "save screenshot"
+    description: "Saves a screenshot of the current screen"
 
 # Game commands
 games:

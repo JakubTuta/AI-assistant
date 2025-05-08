@@ -15,7 +15,7 @@ from helpers.cache import Cache
 class AI:
     client = None
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self) -> None:
         local = Cache.get_local()
         if local:
             self.client = ollama.Client()
@@ -39,13 +39,11 @@ class AI:
     def ask_question(
         self,
         question: str = "",
-        **kwargs,
     ) -> str:
         """
         Asks a question and retrieves the answer from the AI assistant.
 
-        Use this function for: general questions, information retrieval, knowledge queries,
-        facts, explanations, definitions, or when no other specific tool matches the query.
+        Use this function for: general questions, information retrieval, knowledge queries, facts, explanations, definitions, or when no other specific tool matches the query.
 
         Keywords: ask, question, what is, how to, explain, tell me, information, know, answer
 
@@ -83,7 +81,6 @@ class AI:
         self,
         user_input: str,
         available_tools: typing.List[typing.Callable],
-        **kwargs,
     ) -> typing.Optional[typing.Dict[str, typing.Any]]:
         if not user_input or not available_tools:
             return None

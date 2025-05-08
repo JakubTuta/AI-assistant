@@ -15,6 +15,7 @@ class ScreenReader:
     _model = helper_model.get_model()
 
     if _model is None or (isinstance(_model, (list, tuple)) and _model[0] != "gemini"):
+        print(_model)
         import easyocr
 
         _reader = easyocr.Reader(["en"])
