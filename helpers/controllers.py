@@ -43,12 +43,21 @@ class MouseController(pynput.mouse.Controller):
 
                 time.sleep(interval)
 
-    def go_to_center_of_bbox(self, bbox: typing.List[typing.Tuple[int, int]]) -> None:
-        top_left, _, bottom_right, _ = bbox
+    def go_to_center_of_bbox(
+        self, bbox: typing.Dict[str, typing.Tuple[int, int]]
+    ) -> None:
+        """bbox:
+        {
+            "top_left": (x1, y1),
+            "top_right": (x2, y1),
+            "bottom_left": (x1, y2),
+            "bottom_right": (x2, y2),
+        }
+        """
 
         center = (
-            (top_left[0] + bottom_right[0]) // 2,
-            (top_left[1] + bottom_right[1]) // 2,
+            (bbox["top_left"][0] + bbox["bottom_right"][0]) // 2,
+            (bbox["top_left"][1] + bbox["bottom_right"][1]) // 2,
         )
 
         self.position = center

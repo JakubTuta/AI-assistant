@@ -9,11 +9,9 @@ from google import genai
 from google.genai import types as genai_types
 
 import helpers.tools as helpers_tools
+from helpers.cache import Cache
 
-available_models = [
-    "gemini",
-    "sonnet",
-]
+available_models = ["gemini", "sonnet", "ollama"]
 
 
 def get_model() -> typing.Optional[
@@ -23,10 +21,16 @@ def get_model() -> typing.Optional[
             typing.Literal[
                 "gemini",
                 "sonnet",
+                "ollama",
             ],
+            None,
         ]
     ]
 ]:
+    local = Cache.get_local()
+    if local:
+        return ["ollama", None]
+
     gemini_key = os.environ.get("GEMINI_API_KEY")
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
 

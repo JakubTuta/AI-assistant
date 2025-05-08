@@ -2,6 +2,7 @@ import os
 
 from helpers import decorators
 from helpers.audio import Audio
+from helpers.cache import Cache
 
 
 class System:
@@ -21,7 +22,7 @@ class System:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Closing computer. o7")
         print("Closing computer. o7")

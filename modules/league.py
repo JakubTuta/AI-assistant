@@ -4,6 +4,7 @@ import time
 
 from helpers import decorators
 from helpers.audio import Audio
+from helpers.cache import Cache
 from helpers.controllers import MouseController
 from helpers.screenReader import ScreenReader
 
@@ -33,7 +34,7 @@ class LeagueOfLegends:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Accepting game...")
         print("Accepting game...")
@@ -46,10 +47,10 @@ class LeagueOfLegends:
 
                 if (
                     accept_object := ScreenReader.find_text_in_screenshot(
-                        screenshot, "accept!"
+                        screenshot, "Accept!"
                     )
                 ) is not None:
-                    mouse_controller.go_to_center_of_bbox(accept_object[0])  # type: ignore
+                    mouse_controller.go_to_center_of_bbox(accept_object)
                     mouse_controller.click_left_button()
 
                     if audio:
@@ -91,7 +92,7 @@ class LeagueOfLegends:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Queueing up...")
         print("Queueing up...")
@@ -114,7 +115,7 @@ class LeagueOfLegends:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Closing game...")
         print("Closing game...")

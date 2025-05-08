@@ -6,6 +6,7 @@ import requests
 
 from helpers import decorators
 from helpers.audio import Audio
+from helpers.cache import Cache
 
 
 class Weather:
@@ -30,7 +31,7 @@ class Weather:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Getting weather...")
         print("Getting weather...")

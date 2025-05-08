@@ -4,6 +4,7 @@ import typing
 
 from helpers import decorators
 from helpers.audio import Audio
+from helpers.cache import Cache
 from helpers.commands import Commands
 from helpers.recognizer import Recognizer
 from modules.ai import AI
@@ -14,12 +15,9 @@ class Employer:
     _active_jobs: typing.Dict[str, threading.Thread] = {}
     _services = {}
 
-    def __init__(self, audio: bool, local: bool) -> None:
-        self.audio = audio
-        self.local_model = local
+    def __init__(self) -> None:
         self.service_instances = {}
-
-        self.ai_model = AI(local=local)
+        self.ai_model = AI()
 
     @decorators.exit_on_exception
     def speak(self) -> None:
@@ -39,7 +37,7 @@ class Employer:
 
         if (
             bot_response := self.ai_model.get_function_to_call(
-                user_input, self.available_functions, self.local_model
+                user_input, self.available_functions
             )
         ) is None:
             print("Error: Could not determine function to call.")
@@ -47,9 +45,6 @@ class Employer:
 
         function_name = bot_response["name"]
         function_args = bot_response["args"]
-
-        function_args["audio"] = self.audio
-        function_args["local_model"] = self.local_model
 
         if function_name in self.available_jobs:
             self.available_jobs[function_name](**function_args)
@@ -70,7 +65,7 @@ class Employer:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Getting all commands...")
         print("Getting all commands...")
@@ -100,7 +95,7 @@ class Employer:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Stopping all active jobs...")
         print("Stopping all active jobs...")
@@ -128,7 +123,7 @@ class Employer:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Exiting program. o7")
         print("Exiting program. o7")
@@ -143,10 +138,7 @@ class Employer:
 
         for service_name, service_class in decorators.JobRegistry._services.items():
             if service_name not in self.service_instances:
-                self.service_instances[service_name] = service_class(
-                    local=self.local_model,
-                    audio=self.audio,
-                )
+                self.service_instances[service_name] = service_class()
 
         for reg in decorators.JobRegistry._pending_registrations:
             service = self.service_instances[reg["service"]]

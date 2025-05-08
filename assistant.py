@@ -5,14 +5,15 @@ import dotenv
 import keyboard
 
 from helpers.audio import Audio
+from helpers.cache import Cache
 from modules import server
 from modules.employer import Employer
 
 dotenv.load_dotenv()
 
 
-def speech_to_text(local: bool, run_server: bool) -> None:
-    employer = Employer(audio=True, local=local)
+def speech_to_text() -> None:
+    employer = Employer()
 
     if run_server:
         server.start_app(employer_instance=employer)
@@ -37,8 +38,8 @@ def speech_to_text(local: bool, run_server: bool) -> None:
             break
 
 
-def text_to_text(local: bool, run_server: bool) -> None:
-    employer = Employer(audio=False, local=local)
+def text_to_text() -> None:
+    employer = Employer()
 
     if run_server:
         server.start_app(employer_instance=employer)
@@ -85,7 +86,12 @@ if __name__ == "__main__":
     local = args.local
     run_server = args.server
 
+    Cache.load_values()
+    Cache.set_audio(audio)
+    Cache.set_local(local)
+    Cache.set_server(run_server)
+
     if audio:
-        speech_to_text(local=local, run_server=run_server)
+        speech_to_text()
     else:
-        text_to_text(local=local, run_server=run_server)
+        text_to_text()

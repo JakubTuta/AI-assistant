@@ -103,7 +103,7 @@ class Spotify:
 
         search_response = self._search(query=title, artist=artist)
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
 
         if not search_response:
             text = f"Didn't find {title}"
@@ -161,7 +161,7 @@ class Spotify:
 
         search_response = self._search(query=title, artist=artist)
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if not search_response:
             text = f"Didn't find {title}"
 

@@ -5,6 +5,7 @@ from PIL import Image
 
 from helpers import decorators
 from helpers.audio import Audio
+from helpers.cache import Cache
 from helpers.screenReader import ScreenReader
 from modules.ai import AI
 
@@ -29,7 +30,7 @@ class Screen:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Saving a screenshot...")
         print("Saving a screenshot...")
@@ -61,7 +62,7 @@ class Screen:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Taking a screenshot and explaining it...")
         print("Taking a screenshot and explaining it...")
@@ -69,8 +70,6 @@ class Screen:
         screenshot = ScreenReader.take_screenshot(target="active")
 
         ai_model = AI(local=False)
-        response = ai_model.explain_screenshot(
-            user_input, screenshot, local_model=False
-        )
+        response = ai_model.explain_screenshot(user_input, screenshot)
 
         print(response)

@@ -38,7 +38,7 @@ class Gmail:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Checking new emails...")
         print("Checking new emails...")
@@ -77,7 +77,7 @@ class Gmail:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech(f"Checking new emails every {delay} minutes...")
         print(f"Checking new emails every {delay} minutes...")
@@ -121,7 +121,7 @@ class Gmail:
             None
         """
 
-        audio = kwargs.get("audio", False)
+        audio = Cache.get_audio()
         if audio:
             Audio.text_to_speech("Stopping checking new emails...")
         print("Stopping checking new emails...")
