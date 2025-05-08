@@ -1,7 +1,10 @@
+import base64
 import os
 import typing
 
 import anthropic
+import numpy as np
+import ollama
 from google import genai
 from google.genai import types as genai_types
 
@@ -27,19 +30,24 @@ def get_model() -> typing.Optional[
     gemini_key = os.environ.get("GEMINI_API_KEY")
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
 
-    if anthropic_key:
-        return ["sonnet", anthropic_key]
-
     if gemini_key:
         return ["gemini", gemini_key]
 
+    if anthropic_key:
+        return ["sonnet", anthropic_key]
+
 
 def send_message(
-    client: typing.Optional[typing.Union[genai.Client, anthropic.Anthropic]],
+    client: typing.Optional[
+        typing.Union[genai.Client, anthropic.Anthropic, ollama.Client]
+    ],
     message: str,
     system_instructions: typing.Optional[str] = None,
     available_tools: typing.Optional[typing.List[typing.Callable]] = None,
-) -> typing.Union[genai_types.GenerateContentResponse, anthropic.types.Message]:
+    image: typing.Optional[np.ndarray] = None,
+) -> typing.Union[
+    genai_types.GenerateContentResponse, anthropic.types.Message, ollama.ChatResponse
+]:
     if client is None:
         raise Exception("Client is not initialized.")
 
@@ -48,6 +56,10 @@ def send_message(
         parsed_tools = [
             helpers_tools.function_to_schema(func) for func in available_tools
         ]
+
+    base64_image = None
+    if image is not None:
+        base64_image = helpers_tools.numpy_image_to_base64_bytes(image)
 
     if isinstance(client, genai.Client):
         config = None
@@ -68,31 +80,88 @@ def send_message(
                 ),
             )
 
-        return client.models.generate_content(
+        content = message
+        if base64_image is not None:
+            content = [
+                genai_types.Part.from_bytes(
+                    data=base64.b64decode(base64_image), mime_type="image/jpeg"
+                ),
+                message,
+            ]
+
+        response = client.models.generate_content(
             model="gemini-2.0-flash",
-            contents=message,
+            contents=content,
             config=config,
         )
 
+        return response
+
     elif isinstance(client, anthropic.Anthropic):
+        messages_content = message
+        if base64_image is not None:
+            messages_content = [
+                {"type": "text", "text": message},
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": base64_image,
+                    },
+                },
+            ]
+
         response = client.messages.create(
             model="claude-3-7-sonnet-20250219",
             max_tokens=1024,
-            messages=[{"role": "user", "content": message}],
-            system=system_instructions if system_instructions else anthropic.NOT_GIVEN,
+            messages=[{"role": "user", "content": messages_content}],
+            system=(
+                system_instructions if system_instructions else anthropic.NOT_GIVEN
+            ),
             tools=parsed_tools if parsed_tools else anthropic.NOT_GIVEN,  # type: ignore
         )
 
         return response
 
+    elif isinstance(client, ollama.Client):
+        messages = [
+            {
+                "role": "user",
+                "content": message,
+            }
+        ]
+
+        if system_instructions:
+            messages = [
+                {
+                    "role": "assistant",
+                    "content": system_instructions,
+                },
+                *messages,
+            ]
+
+        if (model := os.getenv("AI_MODEL", None)) is None:
+            raise Exception("AI_MODEL environment variable is not set.")
+
+        response = client.chat(
+            model=model,
+            messages=messages,
+            stream=False,
+        )
+
+        return response
+
     raise Exception(
-        "Invalid client type. Expected genai.Client or anthropic.Anthropic."
+        "Invalid client type. Expected genai.Client, anthropic.Anthropic or ollama.Client."
     )
 
 
 def get_text_from_response(
     response: typing.Union[
-        genai_types.GenerateContentResponse, anthropic.types.Message
+        genai_types.GenerateContentResponse,
+        anthropic.types.Message,
+        ollama.ChatResponse,
     ],
 ) -> typing.Optional[str]:
     if isinstance(response, genai_types.GenerateContentResponse):
@@ -102,15 +171,17 @@ def get_text_from_response(
         if response.content:
             return response.content[0].text  # type: ignore
 
+    elif isinstance(response, ollama.ChatResponse):
+        return response.message.content
+
 
 def get_function_from_response(
     response: typing.Union[
-        genai_types.GenerateContentResponse, anthropic.types.Message
+        genai_types.GenerateContentResponse,
+        anthropic.types.Message,
+        ollama.ChatResponse,
     ],
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    function_name = "ask_question"
-    function_args = {}
-
     if isinstance(response, genai_types.GenerateContentResponse):
         if (
             function_call := response.candidates[0].content.parts[0].function_call  # type: ignore
@@ -137,3 +208,22 @@ def get_function_from_response(
                     "name": function_name,
                     "args": function_args,
                 }
+
+    elif isinstance(response, ollama.ChatResponse):
+        if response.message.tool_calls is None:
+            return {
+                "name": "ask_question",
+                "args": {},
+            }
+
+        for tool in response.message.tool_calls:
+            function_name = tool.function.name
+            function_args = tool.function.arguments
+
+            if function_args is None:
+                function_args = {}
+
+            return {
+                "name": function_name,
+                "args": function_args,
+            }

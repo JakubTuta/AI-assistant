@@ -16,3 +16,4 @@ pyaudio
 mss
 google-genai
 anthropic
+Pillow

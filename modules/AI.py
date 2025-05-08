@@ -5,7 +5,6 @@ import typing
 import anthropic
 import numpy as np
 import ollama
-import requests
 from google import genai
 
 import helpers.model as helpers_model
@@ -36,7 +35,11 @@ class AI:
 
     @decorators.capture_response
     @decorators.JobRegistry.register_method
-    def ask_question(self, question: str = "", **kwargs) -> str:
+    def ask_question(
+        self,
+        question: str = "",
+        **kwargs,
+    ) -> str:
         """
         Asks a question and retrieves the answer from the AI assistant.
 
@@ -60,12 +63,20 @@ class AI:
             Audio.text_to_speech(f"Asking {question}...")
         print(f"Asking {question}...")
 
-        local_model = kwargs.get("local_model", False)
-        if local_model:
-            return self._ask_question_local(question)
+        assistant_instructions = "Answer the question as if you are a human. Keep the answer short and simple."
 
-        else:
-            return self._ask_question_remote(question)
+        response = helpers_model.send_message(
+            client=self.client,
+            message=question,
+            system_instructions=assistant_instructions,
+        )
+
+        answer = helpers_model.get_text_from_response(response)
+
+        if answer is None:
+            return "Error: Could not retrieve an answer."
+
+        return answer
 
     def get_function_to_call(
         self,
@@ -77,161 +88,40 @@ class AI:
         if not user_input or not available_tools:
             return None
 
-        if local_model:
-            return self._get_function_to_call_local(user_input, available_tools)
-
-        else:
-            return self._get_function_to_call_remote(user_input, available_tools)
-
-    def explain_screenshot(self, screenshot: np.ndarray, local_model: bool) -> str:
-        if local_model:
-            return self._explain_screenshot_local(screenshot)
-
-        else:
-            return self._explain_screenshot_remote(screenshot)
-
-    @decorators.capture_exception
-    def _ask_question_local(self, question: str) -> str:
-        if (model := os.getenv("AI_MODEL", None)) is None:
-            raise Exception("AI_MODEL environment variable is not set.")
-
-        try:
-            response = ollama.generate(
-                model=model,
-                prompt=f"Keep the answer short and simple. {question}",
-                stream=False,
-            )
-
-        except ollama.RequestError as e:
-            print(f"Request error: {e}")
-
-            return "Error: Could not retrieve an answer."
-
-        if (answer := response.response) is None:
-            return "Error: Could not retrieve an answer."
-
-        return answer
-
-    @decorators.capture_exception
-    def _ask_question_remote(self, question: str) -> str:
-        system_instructions = "Keep the answer short and simple."
+        assistant_instructions = "You are tasked with determining the function to call based on the user's input. Make use of the keywords in the input to identify the appropriate function. If no function is applicable, return 'ask_question' as the default function."
 
         response = helpers_model.send_message(
             client=self.client,
-            message=question,
-            system_instructions=system_instructions,
-        )
-
-        answer = helpers_model.get_text_from_response(response)
-
-        if answer is None:
-            return "Error: Could not retrieve an answer."
-
-        return answer
-
-    @decorators.exit_on_exception
-    def _get_function_to_call_local(
-        self, user_input: str, available_tools: typing.List[typing.Callable]
-    ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-        if (model := os.getenv("AI_MODEL", None)) is None:
-            raise Exception("AI_MODEL environment variable is not set.")
-
-        try:
-            response = ollama.chat(
-                model=model,
-                messages=[{"role": "user", "content": user_input}],
-                tools=available_tools,
-                stream=False,
-            )
-
-        except ollama.RequestError as e:
-            print(f"Request error: {e}")
-
-            return None
-
-        if response.message.tool_calls is None:
-            return {
-                "name": "ask_question",
-                "args": {},
-            }
-
-        for tool in response.message.tool_calls:
-            function_name = tool.function.name
-            function_args = tool.function.arguments
-
-            if function_args is None:
-                function_args = {}
-
-            return {
-                "name": function_name,
-                "args": function_args,
-            }
-
-    @decorators.exit_on_exception
-    def _get_function_to_call_remote(
-        self, user_input: str, available_tools: typing.List[typing.Callable]
-    ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-        response = helpers_model.send_message(
-            client=self.client, message=user_input, available_tools=available_tools
+            message=user_input,
+            available_tools=available_tools,
+            system_instructions=assistant_instructions,
         )
 
         function_to_call = helpers_model.get_function_from_response(response)
 
         return function_to_call
 
-    @decorators.capture_exception
-    def _explain_screenshot_local(
+    def explain_screenshot(
         self,
+        user_input: str,
         screenshot: np.ndarray,
-    ):
-        return ""
-
-    @decorators.capture_exception
-    def _explain_screenshot_remote(
-        self,
-        screenshot: np.ndarray,
+        local_model: bool,
     ) -> str:
-        if (api_key := os.getenv("ANTHROPIC_API_KEY", None)) is None:
-            raise Exception("ANTHROPIC_API_KEY environment variable is not set.")
+        assistant_instructions = "You are tasked with explaining the contents of the screenshot. If there is a highlighted text then focus on that and provide a concise explanation. Keep the answer short and simple."
 
-        url = "https://api.anthropic.com/v1/messages"
+        try:
+            response = helpers_model.send_message(
+                client=self.client,
+                message=user_input,
+                system_instructions=assistant_instructions,
+                image=screenshot,
+            )
 
-        headers = {
-            "anthropic-version": "2023-06-01",
-            "x-api-key": api_key,
-            "Content-Type": "application/json",
-        }
+        except:
+            return "Error: Could not retrieve an answer."
 
-        image_data = base64.b64encode(screenshot).decode("utf-8")
+        answer = helpers_model.get_text_from_response(response)
+        if answer is None:
+            return "Error: Could not retrieve an answer."
 
-        response = requests.post(
-            url,
-            headers=headers,
-            json={
-                "model": "claude-3-7-sonnet-20250219",
-                "max_tokens": 1024,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": "What's in this image? If you see a highlighted text, then focus on that, else explain the image.",
-                            },
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/jpeg",
-                                    "data": image_data,
-                                },
-                            },
-                        ],
-                    }
-                ],
-            },
-        )
-
-        print(response.json())
-
-        return ""
+        return answer
