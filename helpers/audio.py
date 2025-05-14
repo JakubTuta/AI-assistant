@@ -29,7 +29,7 @@ class Audio:
     @staticmethod
     def play_audio_from_file(filename: str) -> None:
         if os.path.exists(filename):
-            playsound.playsound(filename)
+            playsound.playsound(filename, block=False)
         else:
             print(f"Audio file {filename} does not exist.")
 

@@ -35,6 +35,11 @@ class Employer:
     def job_on_command(self, user_input: str) -> None:
         self._refresh_available_jobs()
 
+        if (function := self._check_if_user_input_is_command(user_input)) is not None:
+            function()
+
+            return
+
         if (
             bot_response := self.ai_model.get_function_to_call(
                 user_input, self.available_functions
@@ -147,3 +152,13 @@ class Employer:
                 self.available_jobs[reg["job"]] = method
 
         self.available_functions = list(self.available_jobs.values())
+
+    def _check_if_user_input_is_command(
+        self, user_input: str
+    ) -> typing.Optional[typing.Callable]:
+        normalized_input = user_input.lower().strip()
+        for func in self.available_functions:
+            func_name = func.__name__.replace("_", " ").lower()
+
+            if normalized_input == func_name:
+                return func()

@@ -25,7 +25,6 @@ def speech_to_text() -> None:
     keyboard.add_hotkey(
         hotkey="ctrl+l",
         callback=employer.speak,
-        args=(employer,),
     )
 
     while True:

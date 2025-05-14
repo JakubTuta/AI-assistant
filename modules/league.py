@@ -53,6 +53,9 @@ class LeagueOfLegends:
                     mouse_controller.go_to_center_of_bbox(accept_object)
                     mouse_controller.click_left_button()
 
+                    if employer._active_jobs.get("accept_game"):
+                        del employer._active_jobs["accept_game"]
+
                     if audio:
                         Audio.text_to_speech("Game accepted.")
                     print("Game accepted.")

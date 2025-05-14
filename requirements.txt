@@ -11,7 +11,8 @@ easyocr
 keyboard
 python-dotenv
 flask
-git+https://github.com/killjoy1221/playsound.git
+# git+https://github.com/killjoy1221/playsound.git
+playsound==1.2.2
 pyaudio
 mss
 google-genai
