@@ -3,7 +3,7 @@ import typing
 
 import flask
 
-from .employer import Employer
+from modules.employer import Employer
 
 app = flask.Flask(__name__)
 
@@ -64,9 +64,7 @@ def start_app(employer_instance=None):
     employer = employer_instance
 
     threading_server = threading.Thread(
-        target=lambda: app.run(
-            host="0.0.0.0", port=5000, debug=False, use_reloader=False
-        )
+        target=lambda: app.run(host="0.0.0.0", port=5001, debug=False)
     )
     threading_server.daemon = True
     threading_server.start()
