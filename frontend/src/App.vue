@@ -9,6 +9,9 @@
             </div>
             <div v-else>
               <h1 class="text-h4 text-center mb-8">AI Assistant</h1>
+              <div v-if="serverResponse" class="mb-4 pa-3 bg-blue-lighten-5 rounded-lg">
+                <p v-for="(line, index) in serverResponse" :key="index" class="font-weight-medium">{{ line }}</p>
+              </div>
               <v-text-field
                 label="Search for a command..."
                 variant="outlined"
@@ -16,7 +19,7 @@
                 class="mb-8"
                 v-model="searchQuery"
               ></v-text-field>
-              <CommandButtons :searchQuery="searchQuery" />
+              <CommandButtons :searchQuery="searchQuery" @command-executed="setServerResponse" />
             </div>
           </v-col>
         </v-row>
@@ -31,6 +34,7 @@ import CommandButtons from './components/CommandButtons.vue'
 
 const isConnected = ref(false)
 const searchQuery = ref('')
+const serverResponse = ref(null)
 
 const checkConnection = async () => {
   try {
@@ -40,6 +44,16 @@ const checkConnection = async () => {
     }
   } catch (error) {
     console.error('Error connecting to the server:', error)
+  }
+}
+
+const setServerResponse = (response) => {
+  if (typeof response === 'string') {
+    serverResponse.value = [response]
+  } else if (Array.isArray(response)) {
+    serverResponse.value = response
+  } else {
+    serverResponse.value = null
   }
 }
 

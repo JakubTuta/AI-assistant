@@ -5,6 +5,8 @@ const props = defineProps({
   searchQuery: String
 })
 
+const emit = defineEmits(['command-executed'])
+
 const commands = ref({})
 
 const fetchCommands = async () => {
@@ -41,7 +43,9 @@ const executeCommand = async (commandName, categoryName, variables = null) => {
       })
       url += `?${params.toString()}`
     }
-    await fetch(url, { method: 'POST' })
+    const response = await fetch(url, { method: 'POST' })
+    const responseData = await response.json()
+    emit('command-executed', responseData.response)
   } catch (error) {
     console.error(`Error executing command ${commandName}:`, error)
   }

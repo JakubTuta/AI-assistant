@@ -47,7 +47,7 @@ def execute_job(job_name):
         kwargs = flask.request.args.to_dict()
         result = job(**kwargs)
 
-        return flask.jsonify({"status": "success", "result": result}), 200
+        return flask.jsonify({"status": "success", "response": result}), 200
 
     else:
         return flask.jsonify({"status": "error", "message": "Job not found"}), 404
