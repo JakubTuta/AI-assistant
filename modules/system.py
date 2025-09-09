@@ -10,16 +10,24 @@ class System:
     @staticmethod
     def close_computer() -> None:
         """
-        Shuts down the computer immediately.
-        Executes the system command to shut down the computer forcefully and immediately.
+        [SYSTEM CONTROL JOB] Immediately shuts down the entire computer system.
+        This is a critical system operation that forcefully terminates all processes
+        and powers off the machine. Use with extreme caution as it will close all applications.
 
-        Keywords: close computer, shut down, power off, turn off, exit, close system, shutdown, power down
+        Use this job when the user wants to:
+        - Completely power down the computer
+        - Shut down the system via voice command
+        - Emergency system shutdown
+        - End the computing session entirely
+
+        Keywords: close computer, shut down, power off, turn off, exit, close system, shutdown, power down,
+                 restart computer, shut down pc, power down system, close everything
 
         Args:
             None
 
         Returns:
-            None
+            None: System will shut down immediately after execution.
         """
 
         audio = Cache.get_audio()

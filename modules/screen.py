@@ -19,15 +19,24 @@ class Screen:
     @staticmethod
     def save_screenshot() -> None:
         """
-        Save a screenshot of the current screen to a file.
+        [SCREEN CAPTURE JOB] Captures and saves a screenshot of the current active screen to disk.
+        This standalone task creates a timestamped image file of whatever is currently displayed
+        on the screen and stores it in the screenshots directory for later reference.
 
-        Keywords: screenshot, save, screen capture
+        Use this job when the user wants to:
+        - Capture what's currently on screen
+        - Save visual documentation
+        - Create image records of displayed content
+        - Take screenshots for sharing or archiving
+
+        Keywords: screenshot, save, screen capture, take picture, capture screen, save image,
+                 screen shot, take screenshot, capture display
 
         Args:
             None
 
         Returns:
-            None
+            None: Screenshot file saved to screenshots directory with timestamp filename.
         """
 
         audio = Cache.get_audio()
@@ -50,16 +59,26 @@ class Screen:
     @staticmethod
     def explain_screenshot(user_input: str):
         """
-        Explain the contents of the current screen.
-        Takes a screenshot and sends it to the AI model for analysis.
+        [AI VISION JOB] Captures the current screen and provides AI-powered analysis and explanation.
+        This intelligent task takes a screenshot and uses computer vision AI to describe, analyze,
+        and explain the visual content based on the user's specific question or request.
 
-        Keywords: explain this, what's this, explain, analyze, screenshot, screen capture
+        Use this job when the user wants to:
+        - Understand what's displayed on screen
+        - Get AI analysis of visual content
+        - Explain complex interfaces or applications
+        - Describe images, text, or UI elements visible on screen
+        - Get contextual help about what they're seeing
+
+        Keywords: explain this, what's this, explain, analyze, screenshot, screen capture,
+                 describe screen, what am I looking at, analyze this, tell me about this,
+                 screen analysis, visual explanation
 
         Args:
-            user_input (str): The user's input or question about the screenshot.
+            user_input (str): The user's specific question or request about the screenshot content.
 
         Returns:
-            None
+            str: Detailed AI-generated explanation of the screen content based on user's query.
         """
 
         audio = Cache.get_audio()

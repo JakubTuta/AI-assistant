@@ -17,18 +17,26 @@ class Weather:
     @staticmethod
     def weather(city: str) -> str:
         """
-        Retrieves and outputs the weather information for a given city. If no city is provided,
-        it uses the user's current geolocation to determine the city.
+        [STANDALONE JOB] Retrieves and provides real-time weather information for any city worldwide.
+        This is an independent task that fetches weather data from external APIs and provides
+        complete weather reports including temperature, conditions, and location details.
 
-        Keywords: weather, forecast, current weather, get weather, check weather, city weather, location weather
+        Use this job when the user wants to:
+        - Get current weather conditions for any location
+        - Check temperature and weather descriptions
+        - Obtain weather information using geolocation if no city is specified
+        - Access meteorological data for planning activities
+
+        Keywords: weather, forecast, current weather, get weather, check weather, city weather, location weather,
+                 temperature, conditions, meteorology, climate, outside weather
 
         Args:
             city (str): The name of the city for which to retrieve the weather.
-                                If no city is specified by user the variable is set to empty string ("")
-                                and the user's current geolocation is used.
+                       If no city is specified by user the variable is set to empty string ("")
+                       and the user's current geolocation is used.
 
         Returns:
-            None
+            str: Complete weather report with city, conditions, and temperature information.
         """
 
         audio = Cache.get_audio()

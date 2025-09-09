@@ -89,16 +89,25 @@ class Spotify:
     @decorators.JobRegistry.register_method
     def play_songs(self, title: str, artist: str) -> typing.Optional[str]:
         """
-        Plays a song or an album on Spotify based on the provided title and artist.
+        [SPOTIFY SERVICE METHOD] Searches and plays music on Spotify by title and/or artist.
+        This service method integrates with Spotify API to find and start playback of songs,
+        albums, or artist catalogs based on user search criteria.
 
-        Keywords: play, song, track, music, spotify, search
+        Use this method when the user wants to:
+        - Play specific songs or albums on Spotify
+        - Start music playback with search terms
+        - Listen to music by particular artists
+        - Stream audio content through Spotify
+
+        Keywords: play, song, track, music, spotify, search, listen, stream, music playback,
+                 start music, play spotify, listen to, put on music
 
         Args:
             title (str): Title of the song or an album to play, or name of the artist if no album/song is specified
             artist (str): Artist of the song to play, if not specified by user then set to empty string ("")
 
         Returns:
-            None
+            str: Success message with track/album details or error message if not found.
         """
 
         if not title and not artist:
@@ -150,16 +159,25 @@ class Spotify:
     @decorators.JobRegistry.register_method
     def add_to_queue(self, title: str, artist: str) -> None:
         """
-        Adds a song or an album to the Spotify queue based on the provided title and artist.
+        [SPOTIFY SERVICE METHOD] Adds songs or albums to the Spotify playback queue for later listening.
+        This service method searches for music content and adds it to the current playback queue
+        without interrupting the currently playing track.
 
-        Keywords: add, queue, song, track, music, spotify
+        Use this method when the user wants to:
+        - Add songs to play later
+        - Queue up music for continuous listening
+        - Build a listening sequence
+        - Add tracks without stopping current playback
+
+        Keywords: add, queue, song, track, music, spotify, add to queue, queue up,
+                 add song, queue music, add track, queue this, add to playlist
 
         Args:
-            title (str): Title of the song or an album to play, or name of the artist if no album/song is specified
-            artist (str): Artist of the song to play, if not specified by user then set to empty string ("")
+            title (str): Title of the song or an album to add, or name of the artist if no album/song is specified
+            artist (str): Artist of the song to add, if not specified by user then set to empty string ("")
 
         Returns:
-            None
+            None: Specified music will be added to the Spotify queue.
         """
 
         search_response = self._search(query=title, artist=artist)
@@ -206,15 +224,24 @@ class Spotify:
     @decorators.JobRegistry.register_method
     def toggle_playback(self) -> None:
         """
-        Toggle Spotify music playback state between play and pause.
+        [SPOTIFY SERVICE METHOD] Switches between play and pause states for current Spotify playback.
+        This service method checks the current playback state and toggles it - pausing if playing,
+        or resuming if paused. Provides smart playback control based on current state.
 
-        Keywords: play/pause, toggle, switch, playback, music, spotify, resume/stop
+        Use this method when the user wants to:
+        - Switch between play and pause
+        - Toggle current music playback
+        - Smart play/pause control
+        - Resume or stop current track
+
+        Keywords: play/pause, toggle, switch, playback, music, spotify, resume/stop,
+                 pause/play, toggle music, switch playback, music control
 
         Args:
             None
 
         Returns:
-            None
+            None: Playback state will be toggled automatically.
         """
 
         is_playing = self._is_playback_playing()
@@ -229,15 +256,24 @@ class Spotify:
     @decorators.JobRegistry.register_method
     def start_playback(self) -> None:
         """
-        Starts Spotify music playback.
+        [SPOTIFY SERVICE METHOD] Resumes or starts Spotify music playback from current position.
+        This service method sends play command to Spotify API to begin or continue playback
+        of the current track or playlist from where it was last stopped.
 
-        Keywords: play, start, resume, begin, music, spotify, playback, continue
+        Use this method when the user wants to:
+        - Start playing music on Spotify
+        - Resume paused playback
+        - Continue current track or playlist
+        - Begin music streaming
+
+        Keywords: play, start, resume, begin, music, spotify, playback, continue,
+                 start music, resume music, play spotify, continue playback
 
         Args:
             None
 
         Returns:
-            None
+            None: Spotify playback will start/resume.
         """
 
         url = "https://api.spotify.com/v1/me/player/play"
@@ -259,15 +295,24 @@ class Spotify:
     @decorators.JobRegistry.register_method
     def stop_playback(self) -> None:
         """
-        Stops Spotify music playback.
+        [SPOTIFY SERVICE METHOD] Pauses current Spotify music playback at current position.
+        This service method sends pause command to Spotify API to temporarily stop playback
+        while maintaining the current position for later resumption.
 
-        Keywords: pause, stop, halt, silence, quiet, mute, spotify, music
+        Use this method when the user wants to:
+        - Pause current music playback
+        - Stop Spotify temporarily
+        - Silence the music momentarily
+        - Halt current track playback
+
+        Keywords: pause, stop, halt, silence, quiet, mute, spotify, music,
+                 pause music, stop spotify, halt playback, pause song
 
         Args:
             None
 
         Returns:
-            None
+            None: Spotify playback will be paused.
         """
 
         url = "https://api.spotify.com/v1/me/player/pause"
@@ -289,15 +334,24 @@ class Spotify:
     @decorators.JobRegistry.register_method
     def next_song(self) -> None:
         """
-        Skips to the next song in Spotify music playback.
+        [SPOTIFY SERVICE METHOD] Advances to the next track in the current Spotify playlist or queue.
+        This service method skips the currently playing song and moves forward to the next
+        available track in the playback sequence.
 
-        Keywords: next, skip, forward, another, song, track, spotify, advance
+        Use this method when the user wants to:
+        - Skip the current song
+        - Move to the next track
+        - Advance through playlist
+        - Change to a different song
+
+        Keywords: next, skip, forward, another, song, track, spotify, advance,
+                 next song, skip song, next track, forward song, skip this
 
         Args:
             None
 
         Returns:
-            None
+            None: Playback will advance to the next track.
         """
 
         url = "https://api.spotify.com/v1/me/player/next"
@@ -349,15 +403,24 @@ class Spotify:
     @decorators.JobRegistry.register_method
     def volume_up(self) -> None:
         """
-        Increases Spotify playback volume by 10%.
+        [SPOTIFY SERVICE METHOD] Increases Spotify playback volume by 10% increments.
+        This service method adjusts the volume control through Spotify API, making the music
+        louder while ensuring it doesn't exceed maximum volume limits.
 
-        Keywords: louder, increase, volume up, turn up, higher, spotify, sound
+        Use this method when the user wants to:
+        - Make Spotify music louder
+        - Increase audio volume
+        - Turn up the sound
+        - Boost music volume
+
+        Keywords: louder, increase, volume up, turn up, higher, spotify, sound,
+                 increase volume, make louder, turn up volume, boost sound
 
         Args:
             None
 
         Returns:
-            None
+            None: Spotify volume will be increased by 10%.
         """
         playback_state = self._get_playback_state()
         if not playback_state:

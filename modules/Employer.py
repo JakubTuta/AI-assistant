@@ -59,15 +59,24 @@ class Employer:
     @staticmethod
     def help() -> str:
         """
-        Provides help information about available commands.
+        [SYSTEM INFORMATION JOB] Provides comprehensive list of all available commands and capabilities.
+        This informational task retrieves and displays all registered commands in the system,
+        helping users understand what functionality is available to them.
 
-        Keywords: help, commands, list commands, show commands, available commands, what can you do, options, functionality, capabilities
+        Use this job when the user wants to:
+        - See all available commands
+        - Learn about system capabilities
+        - Get help with available functionality
+        - Discover what the assistant can do
+
+        Keywords: help, commands, list commands, show commands, available commands, what can you do, options, functionality, capabilities,
+                 show help, list functions, available features, what commands, help menu
 
         Args:
             None
 
         Returns:
-            None
+            str: Numbered list of all available commands and their descriptions.
         """
 
         audio = Cache.get_audio()
@@ -88,16 +97,24 @@ class Employer:
     @staticmethod
     def stop_active_jobs() -> str:
         """
-        Stops all active jobs by terminating the threads associated with them.
-        This function iterates through the active jobs and joins each thread to ensure they are stopped.
+        [SYSTEM CONTROL JOB] Terminates all currently running background jobs and processes.
+        This management task stops all active background threads including monitoring tasks,
+        automation jobs, and continuous processes running in the system.
 
-        Keywords: stop jobs, cancel tasks, terminate processes, end running jobs, abort, halt, kill processes, stop threads
+        Use this job when the user wants to:
+        - Stop all background activities
+        - End all running automated tasks
+        - Cancel continuous monitoring processes
+        - Clean up system resources by stopping threads
+
+        Keywords: stop jobs, cancel tasks, terminate processes, end running jobs, abort, halt, kill processes, stop threads,
+                 stop all, cancel everything, end tasks, stop background, terminate all
 
         Args:
             None
 
         Returns:
-            None
+            str: Confirmation message that all active jobs have been stopped.
         """
 
         audio = Cache.get_audio()
@@ -116,16 +133,24 @@ class Employer:
     @staticmethod
     def exit() -> None:
         """
-        Terminates the process immediately without calling cleanup handlers, flushing stdio buffers, etc.
-        This function is intended to be used for emergency exits only. It should not be used for normal program termination.
+        [APPLICATION TERMINATION JOB] Immediately terminates the entire AI assistant application.
+        This emergency shutdown task forcefully exits the program without cleanup,
+        ending all processes and closing the application completely.
 
-        Keywords: exit, quit, close app, shutdown, terminate program, end application, goodbye, bye, shut down
+        Use this job when the user wants to:
+        - Exit the AI assistant completely
+        - End the application session
+        - Perform emergency shutdown
+        - Quit the program entirely
+
+        Keywords: exit, quit, close app, shutdown, terminate program, end application, goodbye, bye, shut down,
+                 close assistant, end program, terminate app, stop everything
 
         Args:
             None
 
         Returns:
-            None
+            None: Application will terminate immediately.
         """
 
         audio = Cache.get_audio()

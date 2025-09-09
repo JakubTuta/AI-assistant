@@ -20,18 +20,24 @@ class LeagueOfLegends:
     @staticmethod
     def accept_game() -> None:
         """
-        Accepts League of Legends queue pop.
-        Starts a background thread that continuously takes screenshots and searches for the text "accept!".
-        When the text is found, it moves the mouse to the center of the bounding box of the text and clicks the left mouse button.
+        [GAME AUTOMATION JOB] Automatically accepts League of Legends queue pop-ups using screen detection.
+        This background task continuously monitors the screen for the "Accept!" button and automatically
+        clicks it when a match is found, eliminating the need for manual queue acceptance.
 
-        Keywords:
-            league, lol, queue, accept match, accept game, queue pop, ready check, auto accept
+        Use this job when the user wants to:
+        - Automatically accept League of Legends matches
+        - Avoid missing queue pop-ups while multitasking
+        - Enable hands-free match acceptance
+        - Set up automated gaming assistance
+
+        Keywords: league, lol, queue, accept match, accept game, queue pop, ready check, auto accept,
+                 league of legends, automatic accept, match found, game ready, auto queue
 
         Args:
             None
 
         Returns:
-            None
+            None: Runs in background thread until match is accepted or stopped.
         """
 
         audio = Cache.get_audio()
@@ -83,16 +89,24 @@ class LeagueOfLegends:
     @staticmethod
     def queue_up() -> None:
         """
-        Runs the League of Legends game by starting the shortcut file located on the desktop.
+        [APPLICATION LAUNCHER JOB] Launches the League of Legends game client application.
+        This task starts the game by executing the desktop shortcut, opening the full
+        League of Legends client ready for gameplay.
 
-        Keywords:
-            queue up, run game, start league, open league, launch lol, play league, start lol, run league, start game
+        Use this job when the user wants to:
+        - Start playing League of Legends
+        - Launch the game client
+        - Open the League application
+        - Begin a gaming session
+
+        Keywords: queue up, run game, start league, open league, launch lol, play league, start lol, run league, start game,
+                 launch league of legends, open lol, start gaming, play lol
 
         Args:
             None
 
         Returns:
-            None
+            None: League of Legends client will launch.
         """
 
         audio = Cache.get_audio()
@@ -106,16 +120,24 @@ class LeagueOfLegends:
     @staticmethod
     def close_game() -> None:
         """
-        Closes the League of Legends application by terminating the process.
+        [APPLICATION TERMINATION JOB] Forcefully closes the League of Legends client application.
+        This task terminates the League of Legends process completely, ending the gaming session
+        and freeing up system resources.
 
-        Keywords:
-            exit league, quit league, terminate lol, close lol, shut down league, stop league, exit game, close game
+        Use this job when the user wants to:
+        - Exit League of Legends completely
+        - End their gaming session
+        - Close the game client
+        - Stop the League application
+
+        Keywords: exit league, quit league, terminate lol, close lol, shut down league, stop league, exit game, close game,
+                 end league, quit lol, stop playing, close league of legends
 
         Args:
             None
 
         Returns:
-            None
+            None: League of Legends client will be terminated.
         """
 
         audio = Cache.get_audio()

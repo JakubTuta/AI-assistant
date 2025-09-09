@@ -27,15 +27,24 @@ class Gmail:
     @staticmethod
     def check_new_emails() -> None:
         """
-        Checks for new emails on Gmail and notifies the user either via audio or print.
+        [EMAIL MANAGEMENT JOB] Retrieves and announces new unread emails from Gmail inbox.
+        This standalone task connects to Gmail, fetches recent unread messages, and provides
+        a summary including sender, subject, and timestamp for each new email.
 
-        Keywords: email, emails, inbox, unread, messages, check emails, new emails, gmail
+        Use this job when the user wants to:
+        - Check for new Gmail messages
+        - Get email notifications and summaries
+        - Review recent unread emails
+        - Stay updated on email communications
+
+        Keywords: email, emails, inbox, unread, messages, check emails, new emails, gmail,
+                 mail check, email update, inbox check, new messages, email notification
 
         Args:
             None
 
         Returns:
-            None
+            None: Announces count and details of new emails via audio or console.
         """
 
         audio = Cache.get_audio()
@@ -62,19 +71,26 @@ class Gmail:
     @staticmethod
     def start_checking_new_emails(delay: int = 15) -> None:
         """
-        Starts a background thread that checks for new emails at regular intervals.
-        This function creates and starts a daemon thread that runs indefinitely,
-        checking for new emails every 15 minutes.
+        [BACKGROUND MONITORING JOB] Initiates continuous automatic email checking at specified intervals.
+        This persistent background task runs indefinitely, checking for new Gmail messages
+        at regular intervals and providing notifications when new emails arrive.
+
+        Use this job when the user wants to:
+        - Set up automatic email monitoring
+        - Receive periodic email notifications
+        - Enable hands-free email checking
+        - Monitor inbox continuously without manual checks
 
         Keywords: monitor email, email updates, auto-check emails, email notifications,
-                  background email checking, periodic email updates, gmail monitoring
+                 background email checking, periodic email updates, gmail monitoring,
+                 automatic email, continuous monitoring, email alerts
 
         Args:
             delay (int): The delay in minutes between each check for new emails.
-                         If not specified, default to 15 minutes.
+                        If not specified, default to 15 minutes.
 
         Returns:
-            None
+            None: Background thread runs continuously until stopped.
         """
 
         audio = Cache.get_audio()
@@ -108,17 +124,25 @@ class Gmail:
     @staticmethod
     def stop_checking_new_emails() -> None:
         """
-        Stops the background thread that checks for new emails at regular intervals.
-        This function stops the daemon thread that was started by the `get_employer().infinitely_check_new_emails` method.
+        [BACKGROUND CONTROL JOB] Terminates the continuous email monitoring background process.
+        This task stops the automated email checking thread that was initiated by the
+        start_checking_new_emails job, ending periodic notifications and monitoring.
+
+        Use this job when the user wants to:
+        - Stop automatic email notifications
+        - End continuous email monitoring
+        - Disable background email checking
+        - Turn off periodic email updates
 
         Keywords: stop email updates, disable email checking, turn off email notifications,
-                  pause email monitoring, end background email checks
+                 pause email monitoring, end background email checks, stop monitoring,
+                 disable email alerts, end automatic checking
 
         Args:
             None
 
         Returns:
-            None
+            None: Background email monitoring thread will be terminated.
         """
 
         audio = Cache.get_audio()

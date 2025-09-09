@@ -41,17 +41,21 @@ class AI:
         question: str = "",
     ) -> str:
         """
-        Asks a question and retrieves the answer from the AI assistant.
+        [AI SERVICE METHOD] Processes general knowledge questions through AI language models.
+        This service method handles open-ended questions, information requests, and general queries
+        that don't require specific system actions or external API calls.
 
-        Use this function for: general questions, information retrieval, knowledge queries, facts, explanations, definitions, or when no other specific tool matches the query.
+        Use this method for: general questions, information retrieval, knowledge queries, facts,
+        explanations, definitions, conversational responses, or when no other specific tool matches the query.
 
-        Keywords: ask, question, what is, how to, explain, tell me, information, know, answer
+        Keywords: ask, question, what is, how to, explain, tell me, information, know, answer,
+                 general question, inquiry, knowledge, facts, definition, explanation
 
         Args:
             question (str): The question to ask the AI assistant.
 
         Returns:
-            str: The AI assistant's response to the question
+            str: The AI assistant's response to the question based on its knowledge base.
         """
 
         if not question:
