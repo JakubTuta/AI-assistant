@@ -9,6 +9,7 @@ import helpers.model as helpers_model
 from helpers import decorators
 from helpers.audio import Audio
 from helpers.cache import Cache
+from helpers.logger import logger
 
 
 @decorators.JobRegistry.register_service
@@ -89,6 +90,14 @@ class AI:
         if not user_input or not available_tools:
             return None
 
+        logger.log_custom(
+            "ai_function_selection",
+            f"AI determining function for input: {user_input}",
+            user_input,
+            "",
+            "",
+        )
+
         assistant_instructions = "You are tasked with determining the function to call based on the user's input. Make use of the keywords in the input to identify the appropriate function. If no function is applicable, return 'ask_question' as the default function."
 
         response = helpers_model.send_message(
@@ -99,6 +108,19 @@ class AI:
         )
 
         function_to_call = helpers_model.get_function_from_response(response)
+
+        if function_to_call:
+            logger.log_custom(
+                "ai_function_selected",
+                f"AI selected function: {function_to_call.get('name', 'unknown')}",
+                user_input,
+                function_to_call.get("name", "unknown"),
+                str(function_to_call.get("args", {})),
+            )
+        else:
+            logger.log_error(
+                "AI could not determine function to call", "get_function_to_call"
+            )
 
         return function_to_call
 

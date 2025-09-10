@@ -143,6 +143,22 @@ On first execution, you'll need to authorize Gmail access:
 - "Check my unread emails"
 - "Play Bohemian Rhapsody on Spotify"
 
+## Logging System
+
+The AI Assistant includes a comprehensive logging system that tracks all user interactions, function calls, and system events.
+
+### Quick Log Analysis
+
+```bash
+# Generate a summary report of the latest logs
+python analyze_logs.py
+
+# Save report to file
+python analyze_logs.py -o report.txt
+```
+
+Logs are stored in the `logs/` directory in both human-readable `.log` format and structured `.csv` format for easy analysis.
+
 ## Troubleshooting
 
 - **Voice Recognition Issues**: Ensure your microphone is set as the default input device

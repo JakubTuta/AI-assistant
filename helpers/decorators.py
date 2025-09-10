@@ -202,13 +202,24 @@ def capture_response(
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs) -> typing.Optional[str]:
+        # Lazy import to avoid circular imports
+        try:
+            from helpers.logger import logger
+        except ImportError:
+            logger = None
+
+        function_name = func.__name__ if hasattr(func, "__name__") else "Unknown"
+        class_name = args[0].__class__.__name__ if args else "Unknown"
+
         try:
             response = func(*args, **kwargs)
 
         except Exception as e:
-            class_name = args[0].__class__.__name__ if args else "Unknown"
-            function_name = func.__name__ if hasattr(func, "__name__") else "Unknown"
-            print(f"\n[{class_name} - {function_name}]: {e}")
+            error_msg = f"\n[{class_name} - {function_name}]: {e}"
+            print(error_msg)
+
+            if logger:
+                logger.log_error(str(e), f"{class_name}.{function_name}")
 
             return
 

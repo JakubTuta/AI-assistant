@@ -6,6 +6,7 @@ from helpers import decorators
 from helpers.audio import Audio
 from helpers.cache import Cache
 from helpers.commands import Commands
+from helpers.logger import logger
 from helpers.recognizer import Recognizer
 from modules.ai import AI
 
@@ -25,10 +26,13 @@ class Employer:
 
         if not user_input:
             print("I didn't hear anything.")
-
+            logger.log_system_event(
+                "speech_recognition_failed", "No speech detected or recognized"
+            )
             return
 
         print(f"\nTranscribed text: {user_input}")
+        logger.log_user_input(user_input, "speech")
 
         self.job_on_command(user_input)
 
@@ -36,8 +40,16 @@ class Employer:
         self._refresh_available_jobs()
 
         if (function := self._check_if_user_input_is_command(user_input)) is not None:
-            function()
-
+            function_name = (
+                function.__name__
+                if hasattr(function, "__name__")
+                else "unknown_command"
+            )
+            logger.log_function_call(function_name, user_input)
+            result = function()
+            logger.log_function_response(
+                function_name, str(result) if result else "No response", user_input
+            )
             return
 
         if (
@@ -45,14 +57,30 @@ class Employer:
                 user_input, self.available_functions
             )
         ) is None:
-            print("Error: Could not determine function to call.")
+            error_msg = "Error: Could not determine function to call."
+            print(error_msg)
+            logger.log_error(error_msg, "job_on_command")
             return
 
         function_name = bot_response["name"]
         function_args = bot_response["args"]
 
         if function_name in self.available_jobs:
-            self.available_jobs[function_name](**function_args)
+            logger.log_function_call(function_name, user_input, function_args)
+            try:
+                result = self.available_jobs[function_name](**function_args)
+                logger.log_function_response(
+                    function_name, str(result) if result else "No response", user_input
+                )
+            except Exception as e:
+                logger.log_error(
+                    f"Function {function_name} failed: {str(e)}", "job_on_command"
+                )
+        else:
+            logger.log_error(
+                f"Function {function_name} not found in available jobs",
+                "job_on_command",
+            )
 
     @decorators.capture_response
     @decorators.JobRegistry.register_job

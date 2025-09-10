@@ -10,6 +10,7 @@ import servers.api as api_server
 import servers.button as button_server
 from helpers.audio import Audio
 from helpers.cache import Cache
+from helpers.logger import logger
 from modules.employer import Employer
 
 dotenv.load_dotenv()
@@ -109,8 +110,12 @@ def text_to_text(employer: Employer) -> None:
     while True:
         try:
             user_input = input("\nEnter a command: ")
+            logger.log_user_input(user_input, "text")
             employer.job_on_command(user_input)
         except KeyboardInterrupt:
+            logger.log_system_event(
+                "application_shutdown", "User interrupted with Ctrl+C"
+            )
             print("\nExiting program...")
             break
 
@@ -121,20 +126,28 @@ def main() -> None:
     """
     print("\nStarting program...")
 
+    # Log system startup
+    logger.log_system_event("application_startup", "AI Assistant starting up")
+
     config = get_config()
+    logger.log_system_event("configuration_loaded", f"Config: {config}")
 
     Cache.load_values()
     Cache.set_audio(config["audio"])
     Cache.set_local(config["local"])
     Cache.set_server(config["run_server"])
+    logger.log_system_event("cache_initialized", "Cache values loaded and configured")
 
     employer = Employer()
+    logger.log_system_event("employer_initialized", "Employer instance created")
 
     start_servers(config, employer)
 
     if config["audio"]:
+        logger.log_system_event("mode_selected", "Speech-to-text mode enabled")
         speech_to_text(employer)
     else:
+        logger.log_system_event("mode_selected", "Text-to-text mode enabled")
         text_to_text(employer)
 
 

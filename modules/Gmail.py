@@ -18,12 +18,42 @@ def get_employer():
 
 
 class Gmail:
-    _gmail_instance = simplegmail.Gmail(
-        client_secret_file="credentials/gmail_credentials.json",
-        creds_file="credentials/gmail_token.json",
-    )
+    _gmail_instance = None
+    _gmail_available = False
 
-    @decorators.JobRegistry.register_job
+    @classmethod
+    def _initialize_gmail(cls):
+        """Initialize Gmail instance with error handling"""
+        if cls._gmail_instance is None:
+            try:
+                cls._gmail_instance = simplegmail.Gmail(
+                    client_secret_file="credentials/gmail_credentials.json",
+                    creds_file="credentials/gmail_token.json",
+                )
+                cls._gmail_available = True
+            except Exception as e:
+                print("\n" + "=" * 60)
+                print("GMAIL CREDENTIALS NOT SET UP")
+                print("=" * 60)
+                print("Gmail credentials are not properly configured.")
+                print("To create the credentials, follow the guide on:")
+                print(
+                    "https://pypi.org/project/simplegmail/ in the 'Getting Started' section"
+                )
+                print(
+                    "\nGmail services will not be available unless the Gmail credentials are created."
+                )
+                print("=" * 60 + "\n")
+                cls._gmail_available = False
+                cls._gmail_instance = None
+
+    @classmethod
+    def _check_gmail_availability(cls):
+        """Check if Gmail is available and initialize if needed"""
+        if cls._gmail_instance is None:
+            cls._initialize_gmail()
+        return cls._gmail_available
+
     @staticmethod
     def check_new_emails() -> None:
         """
@@ -46,6 +76,9 @@ class Gmail:
         Returns:
             None: Announces count and details of new emails via audio or console.
         """
+        if not Gmail._check_gmail_availability():
+            print("Gmail services are not available. Please set up Gmail credentials.")
+            return
 
         audio = Cache.get_audio()
         if audio:
@@ -67,7 +100,6 @@ class Gmail:
             else:
                 print(formatted_message)
 
-    @decorators.JobRegistry.register_job
     @staticmethod
     def start_checking_new_emails(delay: int = 15) -> None:
         """
@@ -92,6 +124,9 @@ class Gmail:
         Returns:
             None: Background thread runs continuously until stopped.
         """
+        if not Gmail._check_gmail_availability():
+            print("Gmail services are not available. Please set up Gmail credentials.")
+            return
 
         audio = Cache.get_audio()
         if audio:
@@ -120,7 +155,6 @@ class Gmail:
 
             get_employer()._active_jobs["check_new_emails"] = thread
 
-    @decorators.JobRegistry.register_job
     @staticmethod
     def stop_checking_new_emails() -> None:
         """
@@ -156,6 +190,9 @@ class Gmail:
 
     @staticmethod
     def _get_new_messages() -> typing.List[Message]:
+        if not Gmail._check_gmail_availability():
+            return []
+
         newer_than_days = Gmail._get_newer_than_days()
 
         query_params = {
@@ -163,22 +200,31 @@ class Gmail:
             "unread": True,
         }
 
-        messages = Gmail._gmail_instance.get_messages(
-            query=simplegmail.query.construct_query(query_params)
-        )
+        if Gmail._gmail_instance is not None:
+            messages = Gmail._gmail_instance.get_messages(
+                query=simplegmail.query.construct_query(query_params)
+            )
+        else:
+            messages = []
 
         return messages
 
     @staticmethod
     def _check_latest_emails(minutes: int = 15) -> typing.List[Message]:
+        if not Gmail._check_gmail_availability():
+            return []
+
         query_params = {
             "newer_than": (minutes, "minute"),
             "unread": True,
         }
 
-        messages = Gmail._gmail_instance.get_messages(
-            query=simplegmail.query.construct_query(query_params)
-        )
+        if Gmail._gmail_instance is not None:
+            messages = Gmail._gmail_instance.get_messages(
+                query=simplegmail.query.construct_query(query_params)
+            )
+        else:
+            messages = []
 
         return messages
 
@@ -210,3 +256,12 @@ class Gmail:
         days_diff = (datetime.now() - newer_than_date).days + 1
 
         return days_diff
+
+
+# Initialize Gmail and conditionally register jobs
+Gmail._initialize_gmail()
+if Gmail._gmail_available:
+    # Register jobs only if Gmail is available
+    decorators.JobRegistry.register_job(Gmail.check_new_emails)
+    decorators.JobRegistry.register_job(Gmail.start_checking_new_emails)
+    decorators.JobRegistry.register_job(Gmail.stop_checking_new_emails)
