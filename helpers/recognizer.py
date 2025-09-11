@@ -1,4 +1,3 @@
-import dotenv
 import speech_recognition as sr
 from google.cloud.speech_v1.types.cloud_speech import RecognizeResponse
 

@@ -10,9 +10,12 @@ import webbrowser
 
 import requests
 
-from helpers import decorators
 from helpers.audio import Audio
 from helpers.cache import Cache
+from helpers.decorators import capture_exception, retry_on_unauthorized
+from helpers.registry import method_job, service_with_env_check
+
+auth_code = None
 
 
 class AuthHandler(http.server.SimpleHTTPRequestHandler):
@@ -44,10 +47,9 @@ class AuthHandler(http.server.SimpleHTTPRequestHandler):
             )
 
 
-@decorators.JobRegistry.register_service
+@service_with_env_check("SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET")
 class Spotify:
-    ENV_SPOTIFY_CLIENT_ID = "SPOTIFY_CLIENT_ID"
-    ENV_SPOTIFY_CLIENT_SECRET = "SPOTIFY_CLIENT_SECRET"
+    """Spotify service for music playback control."""
 
     SPOTIFY_OAUTH_ACCESS_KEY = "SPOTIFY_OAUTH_ACCESS_KEY"
     SPOTIFY_OAUTH_REFRESH_KEY = "SPOTIFY_OAUTH_REFRESH_KEY"
@@ -55,10 +57,9 @@ class Spotify:
 
     PORT = 8888
     REDIRECT_URI = f"http://127.0.0.1:{PORT}/callback"
-
     SCOPE = "user-read-playback-state user-modify-playback-state"
 
-    @decorators.capture_exception
+    @capture_exception
     def __init__(self):
         self.albums = {}
 
@@ -66,9 +67,20 @@ class Spotify:
         self.client_secret = os.getenv(Spotify.ENV_SPOTIFY_CLIENT_SECRET)
 
         if not self.client_id or not self.client_secret:
-            raise Exception(
-                "SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be set in environment variables"
-            )
+            print("\n" + "=" * 60)
+            print("SPOTIFY CREDENTIALS NOT SET UP")
+            print("=" * 60)
+            print("Spotify credentials are not properly configured.")
+            print("Please set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET")
+            print("environment variables with your Spotify app credentials.")
+            print("\nSpotify services will not be available unless the")
+            print("Spotify credentials are created.")
+            print("=" * 60 + "\n")
+            Spotify._spotify_available = False
+            return
+
+        # Set availability to True since we have credentials
+        Spotify._spotify_available = True
 
         self.access_token, self.refresh_token = self._get_tokens_from_cache()
 
@@ -85,12 +97,12 @@ class Spotify:
         if not self.device_id:
             raise Exception("No active Spotify device found")
 
-    @decorators.retry_on_unauthorized("_refresh_access_token")
-    @decorators.JobRegistry.register_method
+    @retry_on_unauthorized("_refresh_access_token")
+    @method_job
     def play_songs(self, title: str, artist: str) -> typing.Optional[str]:
         """
         [SPOTIFY SERVICE METHOD] Searches and plays music on Spotify by title and/or artist.
-        This service method integrates with Spotify API to find and start playback of songs,
+        This service method integrates with Spotify API to find and start playbook of songs,
         albums, or artist catalogs based on user search criteria.
 
         Use this method when the user wants to:
@@ -112,51 +124,28 @@ class Spotify:
 
         if not title and not artist:
             self.start_playback()
+            return
 
         search_response = self._search(query=title, artist=artist)
 
-        audio = Cache.get_audio()
-
         if not search_response:
-            text = f"Didn't find {title}"
+            self._handle_search_not_found(title, artist)
+            return
 
-            if artist:
-                text += f" by {artist}"
-
-            if audio:
-                return Audio.text_to_speech(text)
-            return print(text)
-
-        else:
-            text = f"Playing {search_response['name']} by {search_response['artist']}"
-
-            if audio:
-                Audio.text_to_speech(text)
-            print(text)
+        self._announce_action(
+            f"Playing {search_response['name']} by {search_response['artist']}"
+        )
 
         songs = self._get_songs_from_search(search_response)
+        url = self._build_url_with_device("https://api.spotify.com/v1/me/player/play")
 
-        url = f"https://api.spotify.com/v1/me/player/play"
-
-        if self.device_id:
-            url += f"?device_id={self.device_id}"
-
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
-
-        data = {
-            "uris": songs,
-        }
+        data = {"uris": songs}
 
         self.toggle_shuffle(state=False)
+        self._make_spotify_request("put", url, json=data)
 
-        response = requests.put(url, headers=headers, json=data)
-
-        response.raise_for_status()
-
-    @decorators.retry_on_unauthorized("_refresh_access_token")
-    @decorators.JobRegistry.register_method
+    @retry_on_unauthorized("_refresh_access_token")
+    @method_job
     def add_to_queue(self, title: str, artist: str) -> None:
         """
         [SPOTIFY SERVICE METHOD] Adds songs or albums to the Spotify playback queue for later listening.
@@ -182,46 +171,25 @@ class Spotify:
 
         search_response = self._search(query=title, artist=artist)
 
-        audio = Cache.get_audio()
         if not search_response:
-            text = f"Didn't find {title}"
+            self._handle_search_not_found(title, artist)
+            return
 
-            if artist:
-                text += f" by {artist}"
+        self._announce_action(
+            f"Adding {search_response['name']} by {search_response['artist']} to the queue"
+        )
 
-            if audio:
-                return Audio.text_to_speech(text)
-            return print(text)
-
-        else:
-            text = f"Adding {search_response['name']} by {search_response['artist']} to the queue"
-
-            if audio:
-                Audio.text_to_speech(text)
-            print(text)
-
-        url = f"https://api.spotify.com/v1/me/player/queue"
-
-        if self.device_id:
-            url += f"?device_id={self.device_id}"
-
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
+        base_url = "https://api.spotify.com/v1/me/player/queue"
+        url = self._build_url_with_device(base_url)
 
         songs = self._get_songs_from_search(search_response)
 
         for song in songs:
-            if self.device_id:
-                request_url = f"{url}&uri={song}"
-            else:
-                request_url = f"{url}?uri={song}"
+            separator = "&" if self.device_id else "?"
+            request_url = f"{url}{separator}uri={song}"
+            self._make_spotify_request("post", request_url)
 
-            response = requests.post(request_url, headers=headers)
-
-            response.raise_for_status()
-
-    @decorators.JobRegistry.register_method
+    @method_job
     def toggle_playback(self) -> None:
         """
         [SPOTIFY SERVICE METHOD] Switches between play and pause states for current Spotify playback.
@@ -252,8 +220,8 @@ class Spotify:
         else:
             self.start_playback()
 
-    @decorators.retry_on_unauthorized("_refresh_access_token")
-    @decorators.JobRegistry.register_method
+    @retry_on_unauthorized("_refresh_access_token")
+    @method_job
     def start_playback(self) -> None:
         """
         [SPOTIFY SERVICE METHOD] Resumes or starts Spotify music playback from current position.
@@ -276,23 +244,12 @@ class Spotify:
             None: Spotify playback will start/resume.
         """
 
-        url = "https://api.spotify.com/v1/me/player/play"
-
-        if self.device_id:
-            url += f"?device_id={self.device_id}"
-
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
-
-        response = requests.put(url, headers=headers)
-
-        response.raise_for_status()
-
+        url = self._build_url_with_device("https://api.spotify.com/v1/me/player/play")
+        self._make_spotify_request("put", url)
         print("Playback resumed")
 
-    @decorators.retry_on_unauthorized("_refresh_access_token")
-    @decorators.JobRegistry.register_method
+    @retry_on_unauthorized("_refresh_access_token")
+    @method_job
     def stop_playback(self) -> None:
         """
         [SPOTIFY SERVICE METHOD] Pauses current Spotify music playback at current position.
@@ -315,23 +272,12 @@ class Spotify:
             None: Spotify playback will be paused.
         """
 
-        url = "https://api.spotify.com/v1/me/player/pause"
-
-        if self.device_id:
-            url += f"?device_id={self.device_id}"
-
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
-
-        response = requests.put(url, headers=headers)
-
-        response.raise_for_status()
-
+        url = self._build_url_with_device("https://api.spotify.com/v1/me/player/pause")
+        self._make_spotify_request("put", url)
         print("Playback paused")
 
-    @decorators.retry_on_unauthorized("_refresh_access_token")
-    @decorators.JobRegistry.register_method
+    @retry_on_unauthorized("_refresh_access_token")
+    @method_job
     def next_song(self) -> None:
         """
         [SPOTIFY SERVICE METHOD] Advances to the next track in the current Spotify playlist or queue.
@@ -354,23 +300,12 @@ class Spotify:
             None: Playback will advance to the next track.
         """
 
-        url = "https://api.spotify.com/v1/me/player/next"
-
-        if self.device_id:
-            url += f"?device_id={self.device_id}"
-
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
-
-        response = requests.post(url, headers=headers)
-
-        response.raise_for_status()
-
+        url = self._build_url_with_device("https://api.spotify.com/v1/me/player/next")
+        self._make_spotify_request("post", url)
         print("Skipped a song")
 
-    @decorators.retry_on_unauthorized("_refresh_access_token")
-    @decorators.JobRegistry.register_method
+    @retry_on_unauthorized("_refresh_access_token")
+    @method_job
     def previous_song(self) -> None:
         """
         Skips to the previous song in Spotify music playback.
@@ -384,23 +319,14 @@ class Spotify:
             None
         """
 
-        url = "https://api.spotify.com/v1/me/player/previous"
-
-        if self.device_id:
-            url += f"?device_id={self.device_id}"
-
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
-
-        response = requests.post(url, headers=headers)
-
-        response.raise_for_status()
-
+        url = self._build_url_with_device(
+            "https://api.spotify.com/v1/me/player/previous"
+        )
+        self._make_spotify_request("post", url)
         print("Skipped to the previous song")
 
-    @decorators.retry_on_unauthorized("_refresh_access_token")
-    @decorators.JobRegistry.register_method
+    @retry_on_unauthorized("_refresh_access_token")
+    @method_job
     def volume_up(self) -> None:
         """
         [SPOTIFY SERVICE METHOD] Increases Spotify playback volume by 10% increments.
@@ -431,8 +357,8 @@ class Spotify:
 
         self.set_volume(volume=new_volume)
 
-    @decorators.retry_on_unauthorized("_refresh_access_token")
-    @decorators.JobRegistry.register_method
+    @retry_on_unauthorized("_refresh_access_token")
+    @method_job
     def volume_down(self) -> None:
         """
         Decreases Spotify playback volume by 10%.
@@ -454,8 +380,8 @@ class Spotify:
 
         self.set_volume(volume=new_volume)
 
-    @decorators.retry_on_unauthorized("_refresh_access_token")
-    @decorators.JobRegistry.register_method
+    @retry_on_unauthorized("_refresh_access_token")
+    @method_job
     def max_volume(self) -> None:
         """
         Sets Spotify playback volume to maximum (100%).
@@ -471,8 +397,8 @@ class Spotify:
 
         self.set_volume(volume=100)
 
-    @decorators.retry_on_unauthorized("_refresh_access_token")
-    @decorators.JobRegistry.register_method
+    @retry_on_unauthorized("_refresh_access_token")
+    @method_job
     def set_volume(self, volume: int) -> None:
         """
         Sets Spotify playback volume to a specific level.
@@ -494,21 +420,15 @@ class Spotify:
         if not 0 <= volume <= 100:
             return
 
-        url = f"https://api.spotify.com/v1/me/player/volume?volume_percent={volume}"
+        base_url = (
+            f"https://api.spotify.com/v1/me/player/volume?volume_percent={volume}"
+        )
+        url = self._build_url_with_device(base_url, "&")
 
-        if self.device_id:
-            url += f"&device_id={self.device_id}"
-
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
-
-        response = requests.put(url, headers=headers)
-        response.raise_for_status()
-
+        self._make_spotify_request("put", url)
         print(f"Volume set to {volume}%")
 
-    @decorators.retry_on_unauthorized("_refresh_access_token")
+    @retry_on_unauthorized("_refresh_access_token")
     def toggle_shuffle(self, **kwargs) -> None:
         """
         Toggles shuffle mode on or off for Spotify playback.
@@ -527,19 +447,59 @@ class Spotify:
             playback_state = self._get_playback_state()
             if not playback_state:
                 return
-
             state = not playback_state.get("shuffle_state", False)
 
-        url = f"https://api.spotify.com/v1/me/player/shuffle?state={str(state).lower()}"
+        base_url = (
+            f"https://api.spotify.com/v1/me/player/shuffle?state={str(state).lower()}"
+        )
+        url = self._build_url_with_device(base_url, "&")
 
+        self._make_spotify_request("put", url)
+
+    def _get_auth_headers(self) -> typing.Dict[str, str]:
+        """Get authorization headers for API requests"""
+        return {"Authorization": f"Bearer {self.access_token}"}
+
+    def _get_basic_auth_header(self) -> str:
+        """Get basic auth header for token requests"""
+        return base64.b64encode(
+            f"{self.client_id}:{self.client_secret}".encode()
+        ).decode()
+
+    def _build_url_with_device(self, base_url: str, separator: str = "?") -> str:
+        """Build URL with device_id parameter if available"""
         if self.device_id:
-            url += f"&device_id={self.device_id}"
+            return f"{base_url}{separator}device_id={self.device_id}"
+        return base_url
 
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
+    def _make_spotify_request(
+        self, method: str, url: str, **kwargs
+    ) -> requests.Response:
+        """Make a Spotify API request with standard headers and error handling"""
+        headers = kwargs.pop("headers", self._get_auth_headers())
+        response = getattr(requests, method.lower())(url, headers=headers, **kwargs)
+        response.raise_for_status()
+        return response
 
-        requests.put(url, headers=headers)
+    def _handle_search_not_found(self, title: str, artist: str = "") -> None:
+        """Handle case when search returns no results"""
+        text = f"Didn't find {title}"
+        if artist:
+            text += f" by {artist}"
+
+        audio = Cache.get_audio()
+        if audio:
+            Audio.text_to_speech(text)
+        else:
+            print(text)
+
+    def _announce_action(self, message: str) -> None:
+        """Announce an action via audio or print"""
+        audio = Cache.get_audio()
+        if audio:
+            Audio.text_to_speech(message)
+        else:
+            print(message)
 
     def _is_playback_playing(self):
         playback_state = self._get_playback_state()
@@ -550,48 +510,35 @@ class Spotify:
         return False
 
     def _get_playback_state(self) -> typing.Optional[typing.Dict[str, typing.Any]]:
-        headers = {"Authorization": f"Bearer {self.access_token}"}
-
-        response = requests.get("https://api.spotify.com/v1/me/player", headers=headers)
-
-        if response.status_code == 200:
-            return response.json()
-
-        elif response.status_code == 204:
-            return {"error": "No active device found"}
-
-    @decorators.retry_on_unauthorized("_refresh_access_token")
-    def _get_active_devices(self) -> typing.Optional[str]:
-        url = "https://api.spotify.com/v1/me/player/devices"
-
-        headers = {"Authorization": f"Bearer {self.access_token}"}
-
-        response = requests.get(url, headers=headers)
-
-        response.raise_for_status()
-
-        if len(response.json()["devices"]) > 0:
-            active_device = next(
-                (
-                    device
-                    for device in response.json()["devices"]
-                    if device["is_active"]
-                ),
-                None,
+        try:
+            response = self._make_spotify_request(
+                "get", "https://api.spotify.com/v1/me/player"
             )
+            return response.json()
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 204:
+                return {"error": "No active device found"}
+            raise
 
-            if active_device is None:
-                active_device = response.json()["devices"][0]
+    @retry_on_unauthorized("_refresh_access_token")
+    def _get_active_devices(self) -> typing.Optional[str]:
+        response = self._make_spotify_request(
+            "get", "https://api.spotify.com/v1/me/player/devices"
+        )
+        devices = response.json().get("devices", [])
 
-            return active_device.get("id", None)
+        if not devices:
+            return None
+
+        # Find active device or use first available
+        active_device = next(
+            (device for device in devices if device["is_active"]), devices[0]
+        )
+        return active_device.get("id")
 
     def _refresh_access_token(self, refresh_token):
-        auth_header = base64.b64encode(
-            f"{self.client_id}:{self.client_secret}".encode()
-        ).decode()
-
         headers = {
-            "Authorization": f"Basic {auth_header}",
+            "Authorization": f"Basic {self._get_basic_auth_header()}",
             "Content-Type": "application/x-www-form-urlencoded",
         }
 
@@ -603,14 +550,10 @@ class Spotify:
 
         if response.status_code == 200:
             token_info = response.json()
-            access_token = token_info["access_token"]
-            self.access_token = access_token
-
-            return access_token
-
+            self.access_token = token_info["access_token"]
+            return self.access_token
         else:
             self.access_token = None
-
             return None
 
     def _get_tokens_from_cache(self):
@@ -661,12 +604,8 @@ class Spotify:
             return None
 
     def _get_tokens(self):
-        auth_header = base64.b64encode(
-            f"{self.client_id}:{self.client_secret}".encode()
-        ).decode()
-
         headers = {
-            "Authorization": f"Basic {auth_header}",
+            "Authorization": f"Basic {self._get_basic_auth_header()}",
             "Content-Type": "application/x-www-form-urlencoded",
         }
 
@@ -685,13 +624,10 @@ class Spotify:
             self.access_token = token_info["access_token"]
             self.refresh_token = token_info["refresh_token"]
             self._save_tokens(self.access_token, self.refresh_token)
-
-            return token_info["access_token"], token_info["refresh_token"]
-
+            return self.access_token, self.refresh_token
         else:
             self.access_token = None
             self.refresh_token = None
-
             return None, None
 
     def _save_tokens(self, access_token, refresh_token):
@@ -702,17 +638,14 @@ class Spotify:
             Spotify.SPOTIFY_OAUTH_EXPIRATION_DATE, expiration_date.isoformat()
         )
 
-    @decorators.retry_on_unauthorized("_refresh_access_token")
+    @retry_on_unauthorized("_refresh_access_token")
     def _search(
         self, query: str, artist: str = ""
     ) -> typing.Optional[typing.Dict[str, typing.Any]]:
         final_query = query or artist
 
         url = f"https://api.spotify.com/v1/search?q={final_query}&limit=10&type=album%2Ctrack%2Cartist"
-        headers = {"Authorization": f"Bearer {self.access_token}"}
-
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        response = self._make_spotify_request("get", url)
         response_data = response.json()
 
         for content_type in ["albums", "tracks"]:
@@ -759,51 +692,32 @@ class Spotify:
     def _get_tracks_from_album(self, album_id: str) -> typing.List[str]:
         url = f"https://api.spotify.com/v1/albums/{album_id}"
 
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
-
-        response = requests.get(url, headers=headers)
-
-        if response.status_code == 200:
+        try:
+            response = self._make_spotify_request("get", url)
             album_data = response.json()
-            tracks = [track["uri"] for track in album_data["tracks"]["items"]]
-
-            return tracks
-
-        return []
+            return [track["uri"] for track in album_data["tracks"]["items"]]
+        except requests.exceptions.HTTPError:
+            return []
 
     def _get_artists_top_tracks(self, artist_id: str) -> typing.List[str]:
         url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks"
 
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
-
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
+        try:
+            response = self._make_spotify_request("get", url)
             artist_data = response.json()
-            tracks = [track["uri"] for track in artist_data["tracks"]]
-
-            return tracks
-
-        return []
+            return [track["uri"] for track in artist_data["tracks"]]
+        except requests.exceptions.HTTPError:
+            return []
 
     def _get_artists_albums(self, artist_id: str) -> typing.List[str]:
         url = f"https://api.spotify.com/v1/artists/{artist_id}/albums"
 
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-        }
-        response = requests.get(url, headers=headers)
-
-        if response.status_code == 200:
+        try:
+            response = self._make_spotify_request("get", url)
             artist_data = response.json()
-            albums = [album["uri"] for album in artist_data["items"]]
-
-            return albums
-
-        return []
+            return [album["uri"] for album in artist_data["items"]]
+        except requests.exceptions.HTTPError:
+            return []
 
     def _get_songs_from_search(
         self, search_response: typing.Dict[str, str]
@@ -832,53 +746,3 @@ class Spotify:
             ]
 
         return songs
-
-    # def _prefetch_data(self):
-    #     def worker(self):
-    #         self._fetching_data = True
-
-    #         self._fetch_albums()
-
-    #         self._fetching_data = False
-
-    #     thread = threading.Thread(target=worker, args=(self,))
-    #     thread.daemon = True
-    #     thread.start()
-
-    # @decorators.retry_on_unauthorized("_refresh_access_token")
-    # def _fetch_albums(self):
-    #     limit = 50
-    #     self.albums = {}
-
-    #     headers = {"Authorization": f"Bearer {self.access_token}"}
-
-    #     while True:
-    #         url = f"https://api.spotify.com/v1/me/albums?limit={limit}"
-    #         response = requests.get(url, headers=headers)
-
-    #         response.raise_for_status()
-
-    #         response_json = response.json()
-
-    #         items = response_json.get("items", [])
-
-    #         for item in items:
-    #             album_id = item["album"]["id"]
-    #             artist = item["album"]["artists"][0]["name"]
-    #             album_name = item["album"]["name"]
-    #             tracks = map(
-    #                 lambda track: {
-    #                     "name": track["name"],
-    #                     "id": track["id"],
-    #                 },
-    #                 item["album"]["tracks"],
-    #             )
-
-    #             self.albums[album_id] = {
-    #                 "artist": artist,
-    #                 "album_name": album_name,
-    #                 "tracks": tracks,
-    #             }
-
-    #         if response_json["next"] is None:
-    #             break

@@ -2,12 +2,13 @@ import os
 import threading
 import typing
 
-from helpers import decorators
 from helpers.audio import Audio
 from helpers.cache import Cache
 from helpers.commands import Commands
+from helpers.decorators import capture_response, exit_on_exception
 from helpers.logger import logger
 from helpers.recognizer import Recognizer
+from helpers.registry import ServiceRegistry, register_job
 from modules.ai import AI
 
 
@@ -20,7 +21,7 @@ class Employer:
         self.service_instances = {}
         self.ai_model = AI()
 
-    @decorators.exit_on_exception
+    @exit_on_exception
     def speak(self) -> None:
         user_input = str(Recognizer.recognize_speech_from_mic())
 
@@ -82,8 +83,8 @@ class Employer:
                 "job_on_command",
             )
 
-    @decorators.capture_response
-    @decorators.JobRegistry.register_job
+    @capture_response
+    @register_job
     @staticmethod
     def help() -> str:
         """
@@ -120,8 +121,8 @@ class Employer:
 
         return f"Available commands are: {list_commands}."
 
-    @decorators.capture_response
-    @decorators.JobRegistry.register_job
+    @capture_response
+    @register_job
     @staticmethod
     def stop_active_jobs() -> str:
         """
@@ -157,7 +158,7 @@ class Employer:
 
         return "All active jobs have been stopped."
 
-    @decorators.JobRegistry.register_job
+    @register_job
     @staticmethod
     def exit() -> None:
         """
@@ -190,19 +191,20 @@ class Employer:
 
     def _refresh_available_jobs(self):
         """Refresh available jobs from registry"""
-        for job_name, job in decorators.JobRegistry.available_jobs.items():
+        # Get all jobs from ServiceRegistry
+        all_jobs = ServiceRegistry.get_all_jobs()
+
+        # Add new jobs to available_jobs
+        for job_name, job in all_jobs.items():
             if job_name not in self.available_jobs:
                 self.available_jobs[job_name] = job
 
-        for service_name, service_class in decorators.JobRegistry._services.items():
+        # Create service instances for service-based jobs
+        for service_name, service_class in ServiceRegistry._services.items():
             if service_name not in self.service_instances:
-                self.service_instances[service_name] = service_class()
-
-        for reg in decorators.JobRegistry._pending_registrations:
-            service = self.service_instances[reg["service"]]
-            method = getattr(service, reg["method"])
-            if reg["job"] not in self.available_jobs:
-                self.available_jobs[reg["job"]] = method
+                instance = ServiceRegistry.get_service_instance(service_name)
+                if instance:
+                    self.service_instances[service_name] = instance
 
         self.available_functions = list(self.available_jobs.values())
 

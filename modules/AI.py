@@ -6,13 +6,14 @@ import ollama
 from google import genai
 
 import helpers.model as helpers_model
-from helpers import decorators
 from helpers.audio import Audio
 from helpers.cache import Cache
+from helpers.decorators import capture_response
 from helpers.logger import logger
+from helpers.registry import method_job, simple_service
 
 
-@decorators.JobRegistry.register_service
+@simple_service
 class AI:
     client = None
 
@@ -35,8 +36,8 @@ class AI:
         elif model == "sonnet":
             self.client = anthropic.Anthropic(api_key=api_key)
 
-    @decorators.capture_response
-    @decorators.JobRegistry.register_method
+    @capture_response
+    @method_job
     def ask_question(
         self,
         question: str = "",
