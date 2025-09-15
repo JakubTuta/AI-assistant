@@ -164,3 +164,10 @@ Logs are stored in the `logs/` directory in both human-readable `.log` format an
 - **Voice Recognition Issues**: Ensure your microphone is set as the default input device
 - **Ollama Connection Errors**: Verify Ollama is running on the expected port (11434)
 - **Spotify Authentication Failures**: Double-check that your redirect URI matches exactly
+
+## Ports
+
+- PC button server: 5001
+- PC API server: 5002
+- Raspberry Pi button server: 5003
+- Raspberry Pi API server: 5004

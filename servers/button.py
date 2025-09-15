@@ -27,6 +27,19 @@ LEFT            RIGHT           B
 """
 
 
+@app.after_request
+def after_request(response):
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS")
+    return response
+
+
+@app.route("/ping", methods=["GET"])
+def ping():
+    return flask.jsonify({"status": "ok"})
+
+
 @app.route("/button-pressed/<key>/", methods=["GET"])
 def button_pressed(key):
     if employer is not None:
@@ -64,7 +77,7 @@ def start_app(employer_instance=None):
     employer = employer_instance
 
     threading_server = threading.Thread(
-        target=lambda: app.run(host="0.0.0.0", port=5001, debug=False)
+        target=lambda: app.run(host="0.0.0.0", port=5003, debug=False)
     )
     threading_server.daemon = True
     threading_server.start()

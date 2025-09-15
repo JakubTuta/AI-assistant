@@ -1,0 +1,7 @@
+.vscode/
+frontend/
+__pycache__/
+logs/
+venv/
+cache.json
+.gitignore

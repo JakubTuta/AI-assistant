@@ -2,6 +2,7 @@ import typing
 
 import dotenv
 
+import servers.api as api_server
 import servers.button as button_server
 from helpers.cache import Cache
 from helpers.logger import logger
@@ -39,12 +40,15 @@ def set_config(config: typing.Dict[str, typing.Any]) -> None:
     logger.log_system_event("cache_updated", "Cache values updated based on new config")
 
 
-def start_server(employer: Employer) -> None:
+def start_servers(employer: Employer) -> None:
     """
     Starts the API and button servers based on the provided configuration.
     """
     print("Starting button server...")
     button_server.start_app(employer_instance=employer)
+
+    print("Starting API server...")
+    api_server.start_app(employer_instance=employer)
 
 
 def main() -> None:
@@ -61,7 +65,7 @@ def main() -> None:
     employer = Employer()
     logger.log_system_event("employer_initialized", "Employer instance created")
 
-    start_server(employer)
+    start_servers(employer)
 
 
 if __name__ == "__main__":
