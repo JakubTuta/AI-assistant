@@ -64,3 +64,11 @@ class Cache:
     @staticmethod
     def get_server() -> bool:
         return Cache.get_value("server", default=False)
+
+    @staticmethod
+    def get_button_server() -> bool:
+        return Cache.get_value("button_server", default=False)
+
+    @staticmethod
+    def set_button_server(value: bool) -> None:
+        Cache.set_value("button_server", value)

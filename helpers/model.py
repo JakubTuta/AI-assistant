@@ -3,7 +3,6 @@ import os
 import typing
 
 import anthropic
-import numpy as np
 import ollama
 from google import genai
 from google.genai import types as genai_types
@@ -48,7 +47,6 @@ def send_message(
     message: str,
     system_instructions: typing.Optional[str] = None,
     available_tools: typing.Optional[typing.List[typing.Callable]] = None,
-    image: typing.Optional[np.ndarray] = None,
 ) -> typing.Union[
     genai_types.GenerateContentResponse, anthropic.types.Message, ollama.ChatResponse
 ]:
@@ -60,10 +58,6 @@ def send_message(
         parsed_tools = [
             helpers_tools.function_to_schema(func) for func in available_tools
         ]
-
-    base64_image = None
-    if image is not None:
-        base64_image = helpers_tools.numpy_image_to_base64_bytes(image)
 
     if isinstance(client, genai.Client):
         config = None
@@ -85,13 +79,6 @@ def send_message(
             )
 
         content = message
-        if base64_image is not None:
-            content = [
-                genai_types.Part.from_bytes(
-                    data=base64.b64decode(base64_image), mime_type="image/jpeg"
-                ),
-                message,
-            ]
 
         response = client.models.generate_content(
             model="gemini-2.0-flash",
@@ -103,18 +90,6 @@ def send_message(
 
     elif isinstance(client, anthropic.Anthropic):
         messages_content = message
-        if base64_image is not None:
-            messages_content = [
-                {"type": "text", "text": message},
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/jpeg",
-                        "data": base64_image,
-                    },
-                },
-            ]
 
         response = client.messages.create(
             model="claude-3-7-sonnet-20250219",

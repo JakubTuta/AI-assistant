@@ -4,9 +4,6 @@ import io
 import re
 import typing
 
-import numpy as np
-from PIL import Image
-
 import helpers.model as helpers_model
 
 
@@ -351,61 +348,3 @@ def function_to_schema_anthropic(func: typing.Callable) -> typing.Dict[str, typi
     }
 
     return schema
-
-
-def numpy_image_to_base64_bytes(
-    image_array: np.ndarray, image_format: str = "PNG"
-) -> typing.Optional[bytes]:
-    """
-    Encodes a NumPy array image into a base64 byte string.
-
-    Args:
-        image_array: A NumPy array representing the image (e.g., shape HxW or HxWx3, dtype=uint8).
-        image_format: The format to save the image in ('PNG', 'JPEG', etc.). Defaults to 'PNG'.
-
-    Returns:
-        A bytes object containing the base64 encoded image data.
-        Returns None if the conversion fails.
-    """
-    # Ensure the array is in a format Pillow can handle (e.g., uint8)
-    if image_array.dtype != np.uint8:
-        print(f"Warning: Converting image data from {image_array.dtype} to uint8.")
-        image_array = image_array.astype(np.uint8)
-
-    # Convert the NumPy array to a Pillow Image object
-    try:
-        # Handle different array shapes (grayscale, RGB)
-        if image_array.ndim == 2:
-            pil_image = Image.fromarray(image_array, "L")  # 'L' for grayscale
-        elif image_array.ndim == 3 and image_array.shape[2] == 3:
-            pil_image = Image.fromarray(image_array, "RGB")  # 'RGB' for color
-        elif image_array.ndim == 3 and image_array.shape[2] == 4:
-            pil_image = Image.fromarray(
-                image_array, "RGBA"
-            )  # 'RGBA' for color with alpha
-        else:
-            print(f"Error: Unsupported image array shape: {image_array.shape}")
-            return None
-
-    except Exception as e:
-        print(f"Error converting numpy array to Pillow image: {e}")
-        return None
-
-    # Save the image to a bytes buffer in the specified format
-    buffer = io.BytesIO()
-    try:
-        pil_image.save(buffer, format=image_format)
-    except KeyError:
-        print(f"Error: Unsupported image format: {image_format}")
-        return None
-    except Exception as e:
-        print(f"Error saving Pillow image to buffer: {e}")
-        return None
-
-    # Get the binary data from the buffer
-    image_bytes = buffer.getvalue()
-
-    # Encode the binary data to base64 bytes
-    base64_bytes = base64.b64encode(image_bytes)
-
-    return base64_bytes

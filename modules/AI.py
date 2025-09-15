@@ -1,7 +1,6 @@
 import typing
 
 import anthropic
-import numpy as np
 import ollama
 from google import genai
 
@@ -124,59 +123,3 @@ class AI:
             )
 
         return function_to_call
-
-    def explain_screenshot(
-        self,
-        user_input: str,
-        screenshot: np.ndarray,
-    ) -> str:
-        assistant_instructions = "You are tasked with explaining the contents of the screenshot. If there is a highlighted text then focus on that and provide a concise explanation. Keep the answer short and simple."
-
-        try:
-            response = helpers_model.send_message(
-                client=self.client,
-                message=user_input,
-                system_instructions=assistant_instructions,
-                image=screenshot,
-            )
-
-        except:
-            return "Error: Could not retrieve an answer."
-
-        answer = helpers_model.get_text_from_response(response)
-        if answer is None:
-            return "Error: Could not retrieve an answer."
-
-        return answer
-
-    def find_text_in_screenshot(
-        self,
-        screenshot: np.ndarray,
-        text: str,
-    ) -> typing.Optional[typing.List[float]]:
-        assistant_instructions = "You are tasked with finding the text specified by user in the screenshot. Provide the bounding box coordinates in the format [ymin, xmin, ymax, xmax] normalized to 0-1000."
-
-        try:
-            response = helpers_model.send_message(
-                client=self.client,
-                message=text,
-                system_instructions=assistant_instructions,
-                image=screenshot,
-            )
-
-        except:
-            return None
-
-        answer = helpers_model.get_text_from_response(response)
-        if answer is None:
-            return None
-
-        try:
-            coordinates = eval(answer)
-
-            if not isinstance(coordinates, list) or len(coordinates) != 4:
-                raise ValueError("Couldn't find the text in the screenshot.")
-
-            return coordinates
-        except:
-            raise ValueError("Couldn't find the text in the screenshot.")
