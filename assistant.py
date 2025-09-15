@@ -13,8 +13,6 @@ from helpers.cache import Cache
 from helpers.logger import logger
 from modules.employer import Employer
 
-dotenv.load_dotenv()
-
 
 def get_config() -> typing.Dict[str, typing.Any]:
     """

@@ -51,6 +51,8 @@ class AuthHandler(http.server.SimpleHTTPRequestHandler):
 class Spotify:
     """Spotify service for music playback control."""
 
+    ENV_SPOTIFY_CLIENT_ID = "SPOTIFY_CLIENT_ID"
+    ENV_SPOTIFY_CLIENT_SECRET = "SPOTIFY_CLIENT_SECRET"
     SPOTIFY_OAUTH_ACCESS_KEY = "SPOTIFY_OAUTH_ACCESS_KEY"
     SPOTIFY_OAUTH_REFRESH_KEY = "SPOTIFY_OAUTH_REFRESH_KEY"
     SPOTIFY_OAUTH_EXPIRATION_DATE = "SPOTIFY_OAUTH_EXPIRATION_DATE"
@@ -63,8 +65,8 @@ class Spotify:
     def __init__(self):
         self.albums = {}
 
-        self.client_id = os.getenv(Spotify.ENV_SPOTIFY_CLIENT_ID)
-        self.client_secret = os.getenv(Spotify.ENV_SPOTIFY_CLIENT_SECRET)
+        self.client_id = os.getenv(self.ENV_SPOTIFY_CLIENT_ID)
+        self.client_secret = os.getenv(self.ENV_SPOTIFY_CLIENT_SECRET)
 
         if not self.client_id or not self.client_secret:
             print("\n" + "=" * 60)
@@ -76,11 +78,11 @@ class Spotify:
             print("\nSpotify services will not be available unless the")
             print("Spotify credentials are created.")
             print("=" * 60 + "\n")
-            Spotify._spotify_available = False
+            self._spotify_available = False
             return
 
         # Set availability to True since we have credentials
-        Spotify._spotify_available = True
+        self._spotify_available = True
 
         self.access_token, self.refresh_token = self._get_tokens_from_cache()
 
@@ -557,9 +559,9 @@ class Spotify:
             return None
 
     def _get_tokens_from_cache(self):
-        access_token = Cache.get_value(Spotify.SPOTIFY_OAUTH_ACCESS_KEY)
-        refresh_token = Cache.get_value(Spotify.SPOTIFY_OAUTH_REFRESH_KEY)
-        expiration_date = Cache.get_value(Spotify.SPOTIFY_OAUTH_EXPIRATION_DATE)
+        access_token = Cache.get_value(self.SPOTIFY_OAUTH_ACCESS_KEY)
+        refresh_token = Cache.get_value(self.SPOTIFY_OAUTH_REFRESH_KEY)
+        expiration_date = Cache.get_value(self.SPOTIFY_OAUTH_EXPIRATION_DATE)
 
         if access_token and refresh_token and expiration_date:
             try:
@@ -584,8 +586,8 @@ class Spotify:
             {
                 "client_id": self.client_id,
                 "response_type": "code",
-                "redirect_uri": Spotify.REDIRECT_URI,
-                "scope": Spotify.SCOPE,
+                "redirect_uri": self.REDIRECT_URI,
+                "scope": self.SCOPE,
                 "show_dialog": "true",
             }
         )
@@ -593,8 +595,8 @@ class Spotify:
         print(f"Opening browser for authorization: {auth_url}")
         webbrowser.open(auth_url)
 
-        httpd = socketserver.TCPServer(("", Spotify.PORT), AuthHandler)
-        print(f"Waiting for authorization at http://localhost:{Spotify.PORT}")
+        httpd = socketserver.TCPServer(("", self.PORT), AuthHandler)
+        print(f"Waiting for authorization at http://localhost:{self.PORT}")
         httpd.serve_forever()
 
         if auth_code:
@@ -612,7 +614,7 @@ class Spotify:
         data = {
             "grant_type": "authorization_code",
             "code": self.auth_code,
-            "redirect_uri": Spotify.REDIRECT_URI,
+            "redirect_uri": self.REDIRECT_URI,
         }
 
         response = requests.post(
@@ -632,11 +634,9 @@ class Spotify:
 
     def _save_tokens(self, access_token, refresh_token):
         expiration_date = datetime.datetime.now() + datetime.timedelta(seconds=3600)
-        Cache.set_value(Spotify.SPOTIFY_OAUTH_ACCESS_KEY, access_token)
-        Cache.set_value(Spotify.SPOTIFY_OAUTH_REFRESH_KEY, refresh_token)
-        Cache.set_value(
-            Spotify.SPOTIFY_OAUTH_EXPIRATION_DATE, expiration_date.isoformat()
-        )
+        Cache.set_value(self.SPOTIFY_OAUTH_ACCESS_KEY, access_token)
+        Cache.set_value(self.SPOTIFY_OAUTH_REFRESH_KEY, refresh_token)
+        Cache.set_value(self.SPOTIFY_OAUTH_EXPIRATION_DATE, expiration_date.isoformat())
 
     @retry_on_unauthorized("_refresh_access_token")
     def _search(

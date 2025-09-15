@@ -1,7 +1,9 @@
 import os
 import typing
-from abc import ABC, abstractmethod
 
+import dotenv
+
+dotenv.load_dotenv()
 T = typing.TypeVar("T")
 
 

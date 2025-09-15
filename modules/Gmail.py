@@ -13,9 +13,7 @@ def _check_gmail_credentials() -> bool:
     """Check if Gmail credential files exist."""
     import os
 
-    return os.path.exists("credentials/gmail_credentials.json") and os.path.exists(
-        "credentials/gmail_token.json"
-    )
+    return os.path.exists("credentials/gmail_credentials.json")
 
 
 @service_with_env_check()
@@ -31,6 +29,9 @@ class Gmail:
             print("To create the credentials, follow the guide on:")
             print(
                 "https://pypi.org/project/simplegmail/ in the 'Getting Started' section"
+            )
+            print(
+                "Once created, place the json file in the 'credentials' folder with \"gmail_credentials.json\" name."
             )
             print(
                 "\nGmail services will not be available unless the Gmail credentials are created."
