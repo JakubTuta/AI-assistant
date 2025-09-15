@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { makeServerRequest } from '../utils/serverUtils.js'
 
 const props = defineProps({
   searchQuery: String
@@ -8,11 +9,15 @@ const props = defineProps({
 const emit = defineEmits(['command-executed'])
 
 const commands = ref({})
+const isLoading = ref(false)
+const error = ref(null)
 
 const fetchCommands = async () => {
+  isLoading.value = true
+  error.value = null
   try {
-    const response = await fetch('http://127.0.0.1:5002/commands')
-    const data = await response.json()
+    const result = await makeServerRequest('/commands')
+    const data = result.data
     // Initialize inputValues for commands with variables
     for (const category in data) {
       for (const commandName in data[category]) {
@@ -25,14 +30,22 @@ const fetchCommands = async () => {
       }
     }
     commands.value = data
-  } catch (error) {
-    console.error('Error fetching commands:', error)
+  } catch (err) {
+    console.error('Error fetching commands:', err)
+    error.value = err.message
+    emit('command-executed', `Error: ${err.message}`)
+  } finally {
+    isLoading.value = false
   }
 }
 
 const executeCommand = async (commandName, categoryName, variables = null) => {
+  isLoading.value = true
+  error.value = null
   try {
-    let url = `http://127.0.0.1:5002/${commandName}`
+    let endpoint = `/${commandName}`
+    const options = { method: 'POST' }
+    
     if (variables) {
       const params = new URLSearchParams()
       variables.forEach(variable => {
@@ -41,13 +54,17 @@ const executeCommand = async (commandName, categoryName, variables = null) => {
           params.append(variable.name, value)
         }
       })
-      url += `?${params.toString()}`
+      endpoint += `?${params.toString()}`
     }
-    const response = await fetch(url, { method: 'POST' })
-    const responseData = await response.json()
-    emit('command-executed', responseData.response)
-  } catch (error) {
-    console.error(`Error executing command ${commandName}:`, error)
+    
+    const result = await makeServerRequest(endpoint, options)
+    emit('command-executed', result.data.response)
+  } catch (err) {
+    console.error(`Error executing command ${commandName}:`, err)
+    error.value = err.message
+    emit('command-executed', `Error executing ${commandName}: ${err.message}`)
+  } finally {
+    isLoading.value = false
   }
 }
 
@@ -77,7 +94,16 @@ onMounted(fetchCommands)
 
 <template>
   <v-container>
-    <v-list lines="two">
+    <div v-if="isLoading" class="text-center">
+      <v-progress-circular indeterminate color="primary"></v-progress-circular>
+      <p class="mt-2">Processing request...</p>
+    </div>
+    
+    <v-alert v-if="error" type="error" class="mb-4" dismissible @click:close="error = null">
+      {{ error }}
+    </v-alert>
+    
+    <v-list v-if="!isLoading" lines="two">
       <v-list-group
         v-for="(categoryCommands, categoryName) in filteredCommands"
         :key="categoryName"
@@ -94,6 +120,7 @@ onMounted(fetchCommands)
             v-if="!command.variables"
             @click="executeCommand(commandName, categoryName)"
             :title="command.name"
+            :disabled="isLoading"
             link
           ></v-list-item>
           <v-list-group v-else :value="commandName">
@@ -101,6 +128,7 @@ onMounted(fetchCommands)
               <v-list-item
                 v-bind="props"
                 :title="command.name"
+                :disabled="isLoading"
               ></v-list-item>
             </template>
             <v-list-item>
@@ -111,8 +139,9 @@ onMounted(fetchCommands)
                   :label="variable.description"
                   v-model="command.inputValues[variable.name]"
                   :required="!variable.optional"
+                  :disabled="isLoading"
                 ></v-text-field>
-                <v-btn type="submit" color="primary">Execute</v-btn>
+                <v-btn type="submit" color="primary" :loading="isLoading">Execute</v-btn>
               </v-form>
             </v-list-item>
           </v-list-group>

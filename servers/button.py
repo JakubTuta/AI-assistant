@@ -27,6 +27,19 @@ LEFT            RIGHT           B
 """
 
 
+@app.after_request
+def after_request(response):
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS")
+    return response
+
+
+@app.route("/ping", methods=["GET"])
+def ping():
+    return flask.jsonify({"status": "ok"})
+
+
 @app.route("/button-pressed/<key>/", methods=["GET"])
 def button_pressed(key):
     if employer is not None:
