@@ -59,7 +59,7 @@ def start_app(employer_instance=None):
     employer = employer_instance
 
     threading_server = threading.Thread(
-        target=lambda: app.run(host="0.0.0.0", port=5002, debug=False)
+        target=lambda: app.run(host="0.0.0.0", port=5004, debug=False)
     )
     threading_server.daemon = True
     threading_server.start()
