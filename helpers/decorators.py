@@ -58,13 +58,13 @@ def capture_response(
 
 def capture_exception(
     func: typing.Callable[..., T],
-) -> typing.Callable[..., typing.Union[T, str]]:
+) -> typing.Callable[..., typing.Union[T, None]]:
     """
     Decorator that captures all exceptions and returns them as error messages.
     """
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs) -> typing.Union[T, str]:
+    def wrapper(*args, **kwargs) -> typing.Union[T, None]:
         try:
             return func(*args, **kwargs)
         except Exception as e:
@@ -77,7 +77,8 @@ def capture_exception(
 
             error_message = f"\n[{class_name} - {function_name}]: {e}"
             print(error_message)
-            return error_message
+
+            return None
 
     return wrapper
 
