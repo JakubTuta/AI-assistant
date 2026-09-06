@@ -97,6 +97,7 @@ def fetch_url(url: str, offset: int = 0) -> str:
 
 # ------------------------------------------------------------------ internals
 
+
 def _do_search(query: str, max_results: int = 5) -> typing.List[typing.Dict]:
     import os
 
@@ -145,21 +146,18 @@ def _do_fetch(url: str, offset: int = 0) -> str:
     max_chars = _MAX_CONTENT_CHARS
 
     try:
-        import trafilatura
         import httpx
 
         response = httpx.get(url, timeout=15, follow_redirects=True, headers={
             "User-Agent": "Mozilla/5.0 (compatible; WonyAssistant/1.0)"
         })
         response.raise_for_status()
-        text = trafilatura.extract(response.text)
-        if not text:
-            text = response.text
-    except ImportError:
-        import httpx
-        response = httpx.get(url, timeout=15, follow_redirects=True)
-        response.raise_for_status()
-        text = _strip_html(response.text)
+        try:
+            import trafilatura
+
+            text = trafilatura.extract(response.text) or _strip_html(response.text)
+        except ImportError:
+            text = _strip_html(response.text)
     except Exception as e:
         return f"Error fetching {url}: {e}"
 

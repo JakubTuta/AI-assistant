@@ -81,9 +81,10 @@ def build_agent_system_prompt() -> typing.List[str]:
         " Follow these rules for every user request:"
         "\n\n1. GREET AND ORIENT: If the user greets you (hello, hi, hey, good morning,"
         " good afternoon, good evening, greetings, what's up, morning briefing, daily briefing),"
-        " call the `greeting` tool immediately — do NOT generate your own greeting."
-        " The `greeting` tool returns real-time time, date, weather, unread emails, and today's meetings."
-        " After the tool returns, relay its output verbatim."
+        " call `routine` with name='briefing' immediately — do NOT generate your own greeting."
+        " It returns the user's own briefing steps; carry them out with the other tools and"
+        " answer once with everything they asked for. If the user names any other routine of"
+        " theirs ('good night', 'run my evening routine'), call `routine` with that name."
         "\n\n2. CLARIFY MISSING REQUIRED INFO: Before calling any tool, check whether all"
         " required information is known. Required fields are marked '(required)' in the"
         " tool descriptions. If a required field is missing and cannot be inferred from"
@@ -371,19 +372,25 @@ class AI:
         quiet: return "" instead of a "nothing found" sentence, for the combined
         search where another store may still have the answer.
         """
+        from helpers.memory_db import all_facts_with_source
         from helpers.profile import Profile
 
-        facts = Profile.all()
+        Profile.all()  # seeds from config on a fresh database
+        rows = all_facts_with_source()
         if query:
             needle = query.lower()
-            facts = {
-                key: value for key, value in facts.items()
-                if needle in key.lower() or needle in str(value).lower()
-            }
-        if not facts:
+            rows = [
+                row for row in rows
+                if needle in row["key"].lower() or needle in str(row["value"]).lower()
+            ]
+        if not rows:
             return "" if quiet else "No facts stored in memory."
+        # Marking the guessed ones is the whole review surface: "what do you know
+        # about me" is the only place a wrong auto-learned fact gets caught.
         return "Stored facts:\n" + "\n".join(
-            f"  {key}: {value}" for key, value in sorted(facts.items())
+            f"  {row['key']}: {row['value']}"
+            + (" (worked out from our conversations)" if row["source"] == "auto" else "")
+            for row in rows
         )
 
     @staticmethod

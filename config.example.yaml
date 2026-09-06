@@ -14,6 +14,13 @@ assistant:
     # device running hot, a meeting about to start, important mail. Off by
     # default; ask "what do you watch for" to see the list and switch one off.
     enabled: false
+  memory:
+    # Safety gate — set to true to let Wony work out facts about you from your
+    # own conversations (and, with gmail on, how you write from your sent mail)
+    # and keep them without being asked. While false it remembers only what you
+    # tell it to remember. Ask "what do you know about me" to see and correct
+    # what it has kept.
+    learn_from_my_data: false
 
 ai:
   # Options: anthropic | gemini | ollama | null (auto-detect from .env keys).
@@ -34,7 +41,8 @@ ai:
 # Conversation, module health and the agent loop itself are always on and are
 # not listed here.
 enabled_modules:
-  - basics         # time, date, power off/restart, daily briefing
+  - basics         # time, date, power off/restart
+  - routines       # named sets of steps you run by name, incl. the morning briefing
   - scheduler      # timers, alarms and reminders; can run another job when they fire
   - notes          # shopping / todo lists kept in wony.db
   - weather        # current weather and forecasts

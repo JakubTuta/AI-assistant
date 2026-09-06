@@ -176,6 +176,7 @@ def bootstrap(
     _reconnect_mcp_servers(Config, quiet)
     _start_health_watcher(quiet)
     _start_triggers(quiet)
+    _start_learning(quiet)
 
     if not quiet:
         print()
@@ -241,6 +242,17 @@ def _start_triggers(quiet: bool) -> None:
 
         if triggers.start() and not quiet:
             print("[triggers] Watching for things worth mentioning.")
+    except Exception:
+        pass
+
+
+def _start_learning(quiet: bool) -> None:
+    """Start the memory pass. No-op unless assistant.memory.learn_from_my_data."""
+    try:
+        from helpers import learn
+
+        if learn.start() and not quiet:
+            print("[learn] Picking up facts from conversations.")
     except Exception:
         pass
 

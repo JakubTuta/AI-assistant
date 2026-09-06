@@ -136,7 +136,17 @@ FEATURES = [
         "label": "Shopping & todo lists",
         "module": "notes",
         "default": True,
-        "desc": "Keep written lists by voice: add an item, read one back, tick it off.",
+        "desc": "Keep written lists by asking: add an item, read one back, tick it off.",
+        "needs": "",
+    },
+    {
+        "key": "routines",
+        # Stored in wony.db, and made of other modules' jobs — nothing to install.
+        "reqs": [],
+        "label": "Routines & morning briefing",
+        "module": "routines",
+        "default": True,
+        "desc": "Named sets of steps you run by name. Ships with a briefing you can rewrite.",
         "needs": "",
     },
     {

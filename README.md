@@ -80,6 +80,8 @@ below. Some answer on the spot; others open a page:
 | Devices  | Every device you have, by room, one card each, with its controls |
 | Music    | Cover art, play controls and volume                             |
 | Lists    | Your shopping and todo lists, with a tick to cross one off      |
+| Routines | Every routine you have, and what each one does                  |
+| Briefing | Runs your briefing routine and answers in the chat              |
 | Accounts | Add, sign in to and switch Google accounts                      |
 | Sleep    | Sends the screen dark for the night                             |
 
@@ -88,6 +90,17 @@ not the only one. Things to try: _"what's it doing tomorrow"_, _"set a timer for
 10 minutes"_, _"add milk to my shopping list"_, _"read my last email"_, _"play
 some jazz"_, _"turn off the kitchen light"_, _"remember I prefer metric"_,
 _"what did we talk about on Monday"_.
+
+### Routines
+
+Tap **Briefing**, or say _"good morning"_, and Wony runs your briefing — a
+routine that comes with it and that you own. _"Add my shopping list to the
+briefing"_ rewrites it; the **Routines** tile shows what is in it.
+
+Make your own the same way: _"save a routine called good night that turns off
+the lights and sets an alarm for seven"_, then _"run my good night routine"_.
+A routine is just your own words, so it can use anything Wony can do. Saving or
+deleting one is read back to you first.
 
 **Typing.** Tap the box at the bottom to bring up the on-screen keyboard. If you
 plug in a USB or Bluetooth keyboard, just start typing anywhere and Wony picks
@@ -155,7 +168,8 @@ ai:
 
 # Only what is listed here is switched on.
 enabled_modules:
-  - basics # time, date, daily briefing
+  - basics # time, date, power off
+  - routines # the briefing, and any you save yourself
   - scheduler # timers, alarms, reminders
   - notes # shopping and todo lists
   - weather
@@ -180,7 +194,7 @@ kiosk:
 ```
 
 A few things are switched off until you say otherwise, so nothing surprising can
-happen by accident. All six are on the settings screen too:
+happen by accident. All seven are on the settings screen too:
 
 | Setting                              | Allows                                                                   |
 | ------------------------------------ | ------------------------------------------------------------------------ |
@@ -190,10 +204,20 @@ happen by accident. All six are on the settings screen too:
 | `modules.home_assistant.allow_locks` | Unlocking doors, opening the garage, disarming alarms                    |
 | `modules.mcp.allow_install`          | Starting an MCP server — a program that runs on this device. Off, Wony tells you the command instead |
 | `assistant.proactive.enabled`        | Speaking up on its own about a drive nearly full, the device running hot, a meeting about to start, or important mail |
+| `assistant.memory.learn_from_my_data` | Keeping facts it works out from your own conversations, and how you write from your sent mail |
 
-With the last one on, Wony says it in its own words rather than a canned alert.
-Ask _"what do you watch for"_ to see the list, or _"stop watching for important
-email"_ to switch one off until the next restart.
+**Speaking up on its own** says it in Wony's own words rather than a canned
+alert. Ask _"what do you watch for"_ to see the list, or _"stop watching for
+important email"_ to switch one off until the next restart. A meeting about to
+start comes with who is coming, what you last wrote to them and anything on
+your lists with its name on it.
+
+**Learning about you** keeps the things you mention in passing — the dog's name,
+that you cycle to work — instead of only what you say "remember that" about.
+With Gmail on it also reads your sent mail once a week to describe how you
+write, so a drafted reply sounds like you. Ask _"what do you know about me"_ to
+see everything it kept; the ones it worked out for itself say so, and _"forget
+that"_ throws one away.
 
 Separately from those switches, anything that changes something you care about —
 sending or deleting mail, changing your calendar, cancelling a timer, powering

@@ -116,6 +116,15 @@ export interface NoteList {
   items: string[]
 }
 
+export interface RoutineSummary {
+  name: string
+  steps: string
+}
+
+export interface RoutinesPanel {
+  routines: RoutineSummary[]
+}
+
 export interface NotesPanel {
   lists: NoteList[]
 }
@@ -370,6 +379,7 @@ export const fetchWeather = () => fetchPanel<WeatherPanel>('weather')
 export const fetchAgenda = () => fetchPanel<AgendaPanel>('agenda')
 export const fetchReminders = () => fetchPanel<RemindersPanel>('reminders')
 export const fetchNotes = () => fetchPanel<NotesPanel>('notes')
+export const fetchRoutines = () => fetchPanel<RoutinesPanel>('routines')
 export const fetchDevices = () => fetchPanel<DevicesPanel>('devices')
 export const fetchGoogleAccounts = () => fetchPanel<GoogleAccountsSnapshot>('accounts')
 

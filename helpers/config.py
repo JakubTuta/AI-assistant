@@ -21,12 +21,19 @@ class ProactiveSettings(BaseModel):
     enabled: bool = False
 
 
+class MemorySettings(BaseModel):
+    # Ships off: storing things the user never asked to have stored, and reading
+    # their sent mail to do it, is a decision they make. See helpers/learn.py.
+    learn_from_my_data: bool = False
+
+
 class AssistantSettings(BaseModel):
     name: str = "Wony"
     owner_name: str = "User"
     personality: str = "Friendly and concise."
     language: str = "en"
     proactive: ProactiveSettings = Field(default_factory=ProactiveSettings)
+    memory: MemorySettings = Field(default_factory=MemorySettings)
 
 
 class TileSettings(BaseModel):
@@ -138,7 +145,7 @@ class AppSettings(BaseSettings):
     assistant: AssistantSettings = Field(default_factory=AssistantSettings)
     ai: AiSettings = Field(default_factory=AiSettings)
     enabled_modules: list[str] = Field(
-        default_factory=lambda: ["basics", "scheduler", "weather"]
+        default_factory=lambda: ["basics", "routines", "scheduler", "weather"]
     )
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
     # Empty list = fall back to the built-in manifest (helpers/kiosk.py).

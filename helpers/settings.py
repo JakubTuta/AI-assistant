@@ -19,7 +19,8 @@ CONFIG_FILE = repo_path("config.yaml")
 # Modules a user picks from, with what each one gives them. Order is the order
 # they appear in the UI.
 MODULES: typing.List[typing.Tuple[str, str, str]] = [
-    ("basics", "Everyday basics", "Time, date, daily briefing, power off this device."),
+    ("basics", "Everyday basics", "Time, date, power off this device."),
+    ("routines", "Routines", "Named sets of steps you run by name, like the morning briefing."),
     ("scheduler", "Timers & reminders", "Timers and alarms that survive a restart."),
     ("notes", "Lists", "Shopping and todo lists you can add to by asking."),
     ("weather", "Weather", "Now and the next few days, here or any city."),
@@ -87,8 +88,15 @@ _FIELDS: typing.List[typing.Tuple[str, typing.List[Field]]] = [
               module="mcp"),
         Field("assistant.proactive.enabled", "Speak up on its own", "toggle",
               "Off: Wony only answers. On: it can start a conversation about a "
-              "full disk, the device running hot, a meeting about to start or "
-              "important mail. Ask 'what do you watch for' to see the full list.",
+              "full disk, the device running hot, a meeting about to start, "
+              "important mail, or a web page you asked it to watch. "
+              "Ask 'what do you watch for' to see the full list.",
+              restart=True),
+        Field("assistant.memory.learn_from_my_data", "Learn about me on its own", "toggle",
+              "Off: Wony remembers only what you tell it to remember. On: it reads "
+              "back your own conversations, and your sent mail if Gmail is on, to "
+              "save facts about you and how you write. Ask 'what do you know about "
+              "me' to see and correct them.",
               restart=True),
         Field("modules.gmail.use_ai", "Summarise email with AI", "toggle",
               "Sends the text of your emails to your AI provider.", module="gmail"),

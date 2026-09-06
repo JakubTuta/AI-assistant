@@ -12,6 +12,7 @@ import { Devices } from './screens/Devices'
 import { Home } from './screens/Home'
 import { Music } from './screens/Music'
 import { Notes } from './screens/Notes'
+import { Routines } from './screens/Routines'
 import { Notifications } from './screens/Notifications'
 import { Reminders } from './screens/Reminders'
 import { Settings } from './screens/Settings'
@@ -36,6 +37,7 @@ type Screen =
   | 'devices'
   | 'reminders'
   | 'notes'
+  | 'routines'
   | 'settings'
   | 'sleep'
 
@@ -51,6 +53,7 @@ const TITLES: Record<Screen, string> = {
   devices: 'Devices',
   reminders: 'Timers',
   notes: 'Lists',
+  routines: 'Routines',
   settings: 'Settings',
   sleep: 'Sleep',
 }
@@ -67,6 +70,7 @@ const TILE_SCREENS = new Set<Screen>([
   'notes',
   'notifications',
   'reminders',
+  'routines',
   'settings',
   'sleep',
   'weather',
@@ -172,6 +176,7 @@ function Shell() {
       {screen === 'devices' && <Devices />}
       {screen === 'reminders' && <Reminders />}
       {screen === 'notes' && <Notes />}
+      {screen === 'routines' && <Routines />}
       {screen === 'settings' && <Settings />}
       {screen === 'sleep' && <Sleep onSleeping={() => go('home')} />}
 

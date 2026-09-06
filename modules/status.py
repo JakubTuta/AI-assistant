@@ -39,13 +39,13 @@ def system_status(scope: str = "modules") -> str:
 @capture_response
 def manage_triggers(action: str = "list", name: str = "") -> str:
     """
-    [SYSTEM INFORMATION JOB] Lists the things Wony watches for on its own — a low
-    battery, a full disk, a meeting about to start, important mail — and turns one
+    [SYSTEM INFORMATION JOB] Lists the things Wony watches for on its own — the device
+    running hot, a full disk, a meeting about to start, important mail — and turns one
     of them off or back on for the rest of this session.
 
     Args:
         action (str): "list" (the default), "off" or "on".
-        name (str): Which one, e.g. "battery_low". (required for off and on)
+        name (str): Which one, e.g. "too_hot". (required for off and on)
 
     Returns:
         str: What is being watched, or confirmation of the change.

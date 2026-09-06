@@ -40,8 +40,11 @@ from helpers.registry import ServiceRegistry
 _DEFAULT_TILES: typing.List[typing.Dict[str, typing.Any]] = [
     {"id": "time", "label": "Time", "icon": "🕑", "kind": "job",
      "job": "get_datetime", "module": "basics"},
-    {"id": "briefing", "label": "Briefing", "icon": "👋", "kind": "job",
-     "job": "greeting", "module": "basics"},
+    # The one tile that has to go through the chat: a routine returns steps for
+    # the model to carry out, so running the job straight from a tap would show
+    # the instructions and do none of them.
+    {"id": "briefing", "label": "Briefing", "icon": "👋", "kind": "prompt",
+     "prompt": "run my briefing routine", "module": "routines"},
     {"id": "weather", "label": "Weather", "icon": "🌤️", "kind": "screen",
      "screen": "weather", "module": "weather"},
     {"id": "reminders", "label": "Reminders", "icon": "⏰", "kind": "screen",
@@ -52,6 +55,8 @@ _DEFAULT_TILES: typing.List[typing.Dict[str, typing.Any]] = [
      "job": "find_emails", "args": {"view": "overview"}, "module": "gmail"},
     {"id": "lists", "label": "Lists", "icon": "📝", "kind": "screen",
      "screen": "notes", "module": "notes"},
+    {"id": "routines", "label": "Routines", "icon": "🔁", "kind": "screen",
+     "screen": "routines", "module": "routines"},
     {"id": "lights", "label": "Devices", "icon": "💡", "kind": "screen",
      "screen": "devices", "module": "home_assistant"},
     {"id": "playpause", "label": "Play / Pause", "icon": "⏯️", "kind": "job",

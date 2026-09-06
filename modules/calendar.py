@@ -44,6 +44,22 @@ def _calendar_job_name(account_name: str) -> str:
         ),
     ),
 )
+def _other_attendees(event: dict) -> typing.List[str]:
+    """Everyone on the invite except the user, by name where Google has one.
+
+    Google puts the user themselves in the attendee list flagged `self`, and a
+    room booking in as a resource — neither is a person to be briefed about.
+    """
+    people = []
+    for person in event.get("attendees", []) or []:
+        if person.get("self") or person.get("resource"):
+            continue
+        label = person.get("displayName") or person.get("email") or ""
+        if label:
+            people.append(label)
+    return people
+
+
 class Calendar:
     """Google Calendar service for reading and managing events. Supports multiple Google accounts."""
 
@@ -254,6 +270,7 @@ class Calendar:
                     "all_day": all_day,
                     "location": event.get("location", ""),
                     "account": event.get("_account", ""),
+                    "attendees": _other_attendees(event),
                 }
             )
 
