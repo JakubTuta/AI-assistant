@@ -326,6 +326,15 @@ export interface NotesPanel {
   lists: NoteList[];
 }
 
+export interface RoutineSummary {
+  name: string;
+  steps: string;
+}
+
+export interface RoutinesPanel {
+  routines: RoutineSummary[];
+}
+
 export async function fetchConfig(): Promise<AppConfig> {
   const res = await fetch(`${BASE}/config`);
   if (!res.ok) throw new Error(`Config fetch failed: ${res.status}`);

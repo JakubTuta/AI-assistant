@@ -268,6 +268,10 @@ class Gmail:
             "starred": "is:starred",
             "important": "is:important",
             "drafts": "in:drafts",
+            # "anywhere" is not a Gmail operator — it is the absence of one, and
+            # it is what "have I written to this person before" needs, because
+            # the answer is as likely to be in Sent as in the inbox.
+            "anywhere": "",
         }
         if no_inbox_prefix:
             prefix = ""
@@ -571,15 +575,16 @@ class Gmail:
         return new
 
     def search_messages(
-        self, query: str, max_results: int = 0, account: str = ""
+        self, query: str, max_results: int = 0, account: str = "", folder: str = ""
     ) -> typing.List[Msg]:
         """Raw Gmail search for callers outside this module.
 
         find_emails writes prose for the model; this is the same search handed
         over before it became words, for code that needs the fields — the
-        proactive trigger in helpers/triggers.py, for one.
+        proactive trigger in helpers/triggers.py, for one. `folder` reaches
+        outside the inbox ("sent" is what helpers/learn.py samples for style).
         """
-        return self._fetch(self._scope(query), max_results, account)
+        return self._fetch(self._scope(query, folder), max_results, account)
 
     @staticmethod
     def _locator(query: str, sender: str, subject: str) -> str:

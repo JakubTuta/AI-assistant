@@ -167,6 +167,16 @@ FEATURES = [
         "needs": "",
     },
     {
+        "key": "routines",
+        # Stored in wony.db, and made of other modules' jobs — nothing to install.
+        "reqs": [],
+        "label": "Routines & morning briefing",
+        "module": "routines",
+        "default": True,
+        "desc": "Named sets of steps you run by name. Ships with a briefing you can rewrite.",
+        "needs": "",
+    },
+    {
         "key": "spotify",
         "label": "Spotify playback control",
         "reqs": [],

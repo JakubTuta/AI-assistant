@@ -81,6 +81,25 @@ def _resolve_executable(name: str) -> typing.Optional[str]:
     return None
 
 
+def active_window_title() -> str:
+    """Title of the window in front, or "" when there is none.
+
+    Not a job: the model is given this as turn context (see modules/ai.py) so
+    that "what does this mean" has a subject, and one more tool for a string
+    the prompt can carry for free is a bad trade.
+    """
+    import pygetwindow as gw
+
+    # getActiveWindow() returns None on a locked screen or between focus
+    # changes, and raises on some window managers rather than returning None.
+    try:
+        window = gw.getActiveWindow()
+    except Exception:
+        return ""
+    title = getattr(window, "title", "") or ""
+    return title.strip()
+
+
 def _box_center(box: typing.Dict[str, typing.Tuple[int, int]]) -> typing.Tuple[int, int]:
     left, top = box["top_left"]
     right, bottom = box["bottom_right"]

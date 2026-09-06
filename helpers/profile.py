@@ -46,9 +46,11 @@ class Profile:
         return value if value is not None else default
 
     @classmethod
-    def set(cls, key: str, value: str) -> None:
+    def set(cls, key: str, value: str, source: str = "") -> None:
+        """Store a fact. source="auto" marks one helpers/learn.py worked out
+        rather than one the user asked to keep."""
         from helpers.memory_db import set_fact
-        set_fact(key, value)
+        set_fact(key, value, source)
         try:
             from helpers import semantic
             if semantic.is_available():

@@ -14,6 +14,13 @@ assistant:
     # full, a meeting about to start, important mail. Off by default; ask
     # "what do you watch for" to see the list and switch one off.
     enabled: false
+  memory:
+    # Safety gate — set to true to let Wony work out facts about you from your
+    # own conversations (and, with gmail on, how you write from your sent mail)
+    # and keep them without being asked. While false it remembers only what you
+    # tell it to remember. Ask "what do you know about me" to see and correct
+    # what it has kept.
+    learn_from_my_data: false
 
 voice:
   # Run `python -c "from kokoro_onnx import Kokoro; k=Kokoro('models/kokoro-v1.0.onnx','models/voices-v1.0.bin'); print(k.get_voices())"` to list all voices.
@@ -87,7 +94,8 @@ ai:
 # Conversation, module health and the agent loop itself are always on and are
 # not listed here.
 enabled_modules:
-  - basics         # time, date, shutdown, daily briefing
+  - basics         # time, date, shutdown
+  - routines       # named sets of steps you run by name, incl. the morning briefing
   - scheduler      # timers, alarms and reminders; can run another job when they fire
   - notes          # shopping / todo lists kept in wony.db
   - weather        # current weather and forecasts
@@ -131,6 +139,11 @@ modules:
     # Safety gate — set to true to enable type/click/clipboard-write/file-open actions.
     allow_actions: false
     file_search_root: "~"     # root dir for find_file searches
+    # Privacy gate — set to true to send the title of the window you have in
+    # front to your AI provider with every message, so "what does this mean"
+    # has something to point at. Window titles name documents, browser tabs and
+    # who you are chatting to.
+    share_window_title: false
   mcp:
     # Safety gate — an MCP server is a program Wony starts on this computer with
     # your privileges. While false, adding/editing/connecting one tells you the

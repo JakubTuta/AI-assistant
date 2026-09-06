@@ -66,6 +66,12 @@ def _notes() -> typing.Dict[str, typing.Any]:
     return notes.snapshot()
 
 
+def _routines() -> typing.Dict[str, typing.Any]:
+    from modules import routines
+
+    return routines.snapshot()
+
+
 class _Panel(typing.NamedTuple):
     module: str  # must be enabled for this panel to exist
     label: str
@@ -77,6 +83,7 @@ _PANELS: typing.Dict[str, _Panel] = {
     "agenda": _Panel("calendar", "Today", _agenda),
     "reminders": _Panel("scheduler", "Timers", _reminders),
     "notes": _Panel("notes", "Lists", _notes),
+    "routines": _Panel("routines", "Routines", _routines),
     "devices": _Panel("home_assistant", "Devices", _devices),
     "music": _Panel("spotify", "Music", _music),
     "accounts": _Panel("google_accounts", "Accounts", _accounts),

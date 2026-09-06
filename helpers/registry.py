@@ -269,6 +269,14 @@ class ServiceRegistry:
 
             cls.declare_requirement(module_name, requires)
 
+            # On the function, not just in the registry: whether a job needs
+            # confirming is a property of the job, and it has to be readable
+            # even when the module it lives in is switched off — otherwise the
+            # test that every destructive job declares a gate can only see the
+            # modules the developer happens to have enabled. method_job stores
+            # it the same way.
+            func._job_confirms = confirms
+
             enabled, reason = cls._check_module_enabled(module_name)
             if not enabled:
                 if module_name:

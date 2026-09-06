@@ -53,6 +53,32 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             ts    TEXT NOT NULL
         )
     """)
+    # Where a fact came from: "" for one the user asked to store, "auto" for one
+    # helpers/learn.py distilled out of past conversations. A wrong auto-learned
+    # fact is the failure mode that matters, and it cannot be reviewed without
+    # knowing which facts were never actually stated.
+    try:
+        conn.execute("ALTER TABLE facts ADD COLUMN source TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+    # Small internal key/value store — cursors and watermarks for background
+    # passes. Deliberately not `facts`: those ride along in every system prompt.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS kv (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    # Named sequences of steps, in the user's own words, run through the agent.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS routines (
+            name       TEXT PRIMARY KEY,
+            steps      TEXT NOT NULL,
+            created_ts TEXT NOT NULL,
+            updated_ts TEXT NOT NULL
+        )
+    """)
     # Written lists — shopping, todo, ideas. Separate from `facts`: a fact is a
     # single value keyed by name, a list is an ordered bag of lines that grows.
     conn.execute("""
@@ -259,14 +285,20 @@ def get_fact(key: str) -> typing.Optional[str]:
         return row["value"] if row else None
 
 
-def set_fact(key: str, value: str) -> None:
+def set_fact(key: str, value: str, source: str = "") -> None:
+    """Store a fact. `source` is "auto" for one distilled from past conversations.
+
+    Restating a fact overwrites its source too, so a fact the user has since
+    confirmed out loud stops being marked as guessed.
+    """
     conn = _get_conn()
     ts = datetime.now().isoformat(timespec="seconds")
     with _lock:
         conn.execute(
-            "INSERT INTO facts (key, value, ts) VALUES (?, ?, ?)"
-            " ON CONFLICT(key) DO UPDATE SET value=excluded.value, ts=excluded.ts",
-            (key, value, ts),
+            "INSERT INTO facts (key, value, ts, source) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(key) DO UPDATE SET value=excluded.value, ts=excluded.ts,"
+            " source=excluded.source",
+            (key, value, ts, source),
         )
         conn.commit()
 
@@ -284,6 +316,25 @@ def all_facts() -> typing.Dict[str, str]:
     with _lock:
         rows = conn.execute("SELECT key, value FROM facts ORDER BY key").fetchall()
         return {r["key"]: r["value"] for r in rows}
+
+
+def all_facts_with_source() -> typing.List[typing.Dict[str, str]]:
+    """Every fact plus where it came from, for the review surfaces."""
+    conn = _get_conn()
+    with _lock:
+        rows = conn.execute(
+            "SELECT key, value, ts, source FROM facts ORDER BY key"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def count_facts(source: str) -> int:
+    conn = _get_conn()
+    with _lock:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM facts WHERE source = ?", (source,)
+        ).fetchone()
+        return int(row["n"])
 
 
 def import_facts_from_dict(data: typing.Dict[str, str]) -> None:
@@ -359,6 +410,67 @@ def note_lists() -> typing.Dict[str, int]:
             "SELECT list_name, COUNT(*) AS n FROM notes GROUP BY list_name ORDER BY list_name"
         ).fetchall()
         return {r["list_name"]: r["n"] for r in rows}
+
+
+# ------------------------------------------------------------------ kv (internal watermarks)
+
+def get_kv(key: str, default: str = "") -> str:
+    conn = _get_conn()
+    with _lock:
+        row = conn.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+
+def set_kv(key: str, value: str) -> None:
+    conn = _get_conn()
+    with _lock:
+        conn.execute(
+            "INSERT INTO kv (key, value) VALUES (?, ?)"
+            " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, str(value)),
+        )
+        conn.commit()
+
+
+# ------------------------------------------------------------------ routines
+
+def save_routine(name: str, steps: str) -> None:
+    conn = _get_conn()
+    ts = datetime.now().isoformat(timespec="seconds")
+    with _lock:
+        conn.execute(
+            "INSERT INTO routines (name, steps, created_ts, updated_ts) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(name) DO UPDATE SET steps=excluded.steps, updated_ts=excluded.updated_ts",
+            (name, steps, ts, ts),
+        )
+        conn.commit()
+
+
+def get_routine(name: str) -> typing.Optional[typing.Dict]:
+    conn = _get_conn()
+    with _lock:
+        row = conn.execute(
+            "SELECT name, steps, created_ts, updated_ts FROM routines WHERE name = ?",
+            (name,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def all_routines() -> typing.List[typing.Dict]:
+    conn = _get_conn()
+    with _lock:
+        rows = conn.execute(
+            "SELECT name, steps, created_ts, updated_ts FROM routines ORDER BY name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def delete_routine(name: str) -> bool:
+    conn = _get_conn()
+    with _lock:
+        cur = conn.execute("DELETE FROM routines WHERE name = ?", (name,))
+        conn.commit()
+        return cur.rowcount > 0
 
 
 # ------------------------------------------------------------------ reminders
@@ -643,7 +755,7 @@ def delete_embedding_by_ref(
 # ------------------------------------------------------------------
 
 def wipe_all() -> None:
-    """Delete every row the user owns: turns, facts, notes, reminders,
+    """Delete every row the user owns: turns, facts, notes, routines, reminders,
     notifications, mcp servers, embeddings.
 
     Resets a fresh session id and clears the in-memory conversation window.
@@ -651,7 +763,8 @@ def wipe_all() -> None:
     global SESSION_ID
     conn = _get_conn()
     with _lock:
-        for table in ("turns", "facts", "notes", "reminders", "notifications", "mcp_servers", "embeddings"):
+        for table in ("turns", "facts", "kv", "notes", "routines", "reminders",
+                      "notifications", "mcp_servers", "embeddings"):
             try:
                 conn.execute(f"DELETE FROM {table}")
             except sqlite3.OperationalError:

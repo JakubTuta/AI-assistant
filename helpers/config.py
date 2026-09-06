@@ -21,12 +21,19 @@ class ProactiveSettings(BaseModel):
     enabled: bool = False
 
 
+class MemorySettings(BaseModel):
+    # Ships off: storing things the user never asked to have stored, and reading
+    # their sent mail to do it, is a decision they make. See helpers/learn.py.
+    learn_from_my_data: bool = False
+
+
 class AssistantSettings(BaseModel):
     name: str = "Wony"
     owner_name: str = "User"
     personality: str = "Friendly and concise."
     language: str = "en"
     proactive: ProactiveSettings = Field(default_factory=ProactiveSettings)
+    memory: MemorySettings = Field(default_factory=MemorySettings)
 
 
 class SttSettings(BaseModel):
@@ -143,6 +150,9 @@ class CalendarSettings(BaseModel):
 class DesktopSettings(BaseModel):
     allow_actions: bool = False
     file_search_root: str = "~"
+    # Ships off: a window title names documents, browser tabs and who you are
+    # chatting to, and this sends it to the AI provider on every request.
+    share_window_title: bool = False
 
 
 class McpSettings(BaseModel):
@@ -175,7 +185,7 @@ class AppSettings(BaseSettings):
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     ai: AiSettings = Field(default_factory=AiSettings)
     enabled_modules: list[str] = Field(
-        default_factory=lambda: ["basics", "weather", "spotify", "screen"]
+        default_factory=lambda: ["basics", "routines", "weather", "spotify", "screen"]
     )
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
     tray: TraySettings = Field(default_factory=TraySettings)

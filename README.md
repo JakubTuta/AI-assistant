@@ -70,10 +70,20 @@ have I got"_, _"read my last email"_, _"what's on my calendar tomorrow"_,
 _"play some jazz"_, _"turn off the kitchen light"_, _"remember I prefer
 metric"_, _"what did we talk about on Monday"_.
 
-A timer can also run something else when it fires, which is how you get a daily
-briefing: _"every weekday at 8am run greeting"_ reads out the time, weather,
-unread email and today's meetings. Others: _"in 10 minutes pause the music"_,
-_"every day at 7am turn on the bedroom light"_.
+### Routines
+
+Say _"good morning"_ and Wony runs your **briefing** — a routine that comes with
+it, and that you own: _"add my shopping list to the briefing"_ rewrites it, and
+_"what's in my briefing"_ reads it back.
+
+Make your own the same way: _"save a routine called good night that turns off
+the lights and sets an alarm for seven"_. Then _"run my good night routine"_.
+A routine is just your own words, so it can use anything Wony can do. Saving or
+deleting one is read back to you first.
+
+A timer can run a routine when it fires: _"every weekday at 8am run my
+briefing"_. Others: _"in 10 minutes pause the music"_, _"every day at 7am turn
+on the bedroom light"_.
 
 Say _"thanks"_, _"stop"_ or _"that's all"_ to end a spoken conversation.
 
@@ -88,6 +98,7 @@ looking at rather than asking about.
 | Today    | Google Calendar         | Today's and tomorrow's events                         |
 | Timers   | Timers & reminders      | Everything counting down, with a cancel button        |
 | Lists    | Lists                   | Your shopping and todo lists                          |
+| Routines | Routines                | Every routine you have, and what each one does        |
 | Devices  | Home Assistant          | Every device by room, one card each, with its switches and settings |
 | Music    | Spotify                 | Cover art, transport and volume                       |
 | Accounts | Google accounts         | Add, sign in to and switch Google accounts            |
@@ -122,7 +133,7 @@ are switched on.
 
 ### What Wony may do on its own
 
-These six start **off**. Nothing else can turn them on.
+These eight start **off**. Nothing else can turn them on.
 
 | Switch                           | Off (the default)                       | On                                          |
 | -------------------------------- | --------------------------------------- | ------------------------------------------- |
@@ -132,15 +143,32 @@ These six start **off**. Nothing else can turn them on.
 | Type and click for me            | Can look at the screen                  | Can type, click, open and write files       |
 | Install MCP tool servers         | Tells you the command                   | Starts the program on this computer         |
 | Speak up on its own              | Only answers when asked                 | Can start a conversation about what it sees |
+| Learn about me on its own        | Remembers only what you ask it to       | Keeps facts it works out from your own data |
+| Tell it what I'm looking at      | Sees nothing unless you ask             | Sends the front window's title every message |
 
 They are `modules.gmail.allow_write`, `modules.calendar.allow_write`,
 `modules.home_assistant.allow_locks`, `modules.desktop.allow_actions`,
-`modules.mcp.allow_install` and `assistant.proactive.enabled` in `config.yaml`.
+`modules.mcp.allow_install`, `assistant.proactive.enabled`,
+`assistant.memory.learn_from_my_data` and `modules.desktop.share_window_title`
+in `config.yaml`.
 
-With the last one on, Wony watches for a low battery, a drive nearly full, a
-meeting about to start and mail Gmail marked important — and says something in
+**Speak up on its own** lets Wony watch for a low battery, a drive nearly full,
+a meeting about to start and mail Gmail marked important — and say something in
 its own words rather than a canned alert. Ask _"what do you watch for"_ to see
-the list, or _"stop watching for important email"_ to switch one off.
+the list, or _"stop watching for important email"_ to switch one off. A meeting
+about to start comes with who is coming, what you last wrote to them and
+anything on your lists with the meeting's name on it.
+
+**Learn about me on its own** lets Wony keep the things you mention in passing —
+the dog's name, that you cycle to work — instead of only what you say
+"remember that" about. With Gmail on it also reads your sent mail once a week to
+describe how you write, so a drafted reply sounds like you. Ask _"what do you
+know about me"_ to see everything it kept; the ones it worked out for itself say
+so, and _"forget that"_ throws one away.
+
+**Tell it what I'm looking at** puts the title of your front window into each
+message, so _"what does this error mean"_ has something to point at. Titles name
+documents, tabs and who you are chatting to, which is why it ships off.
 
 Separately from those switches, anything that changes something you care about —
 sending or deleting mail, changing your calendar, cancelling a timer, shutting
@@ -162,7 +190,8 @@ off — nothing crashes, and `doctor` says what is missing.
 
 | Feature                                      | What you need to bring                                                         |
 | -------------------------------------------- | ------------------------------------------------------------------------------ |
-| Everyday basics — time, date, daily briefing | none                                                                           |
+| Everyday basics — time, date, shutdown       | none                                                                           |
+| Routines — the briefing and your own         | none                                                                           |
 | Timers, alarms and reminders                 | none                                                                           |
 | Shopping and todo lists                      | none                                                                           |
 | Computer health — battery, disk, memory      | none                                                                           |
