@@ -59,5 +59,5 @@ def print_startup_summary() -> None:
         except Exception:
             pass
 
-    print("  Type 'help' for commands, 'check setup' for full diagnostics.")
+    print("  Ask 'what can you do' for the command list, or 'check my setup' for full diagnostics.")
 

@@ -44,6 +44,7 @@ def run_turn(
     on_text: typing.Optional[typing.Callable[[str], None]] = None,
 ) -> TurnResult:
     """Run one agent turn. Never raises — failures come back in TurnResult.error."""
+    from helpers import confirm
     from helpers.agent import run_agent
     from helpers.bootstrap import get_ai_client
     from helpers.conversation import Conversation
@@ -72,6 +73,9 @@ def run_turn(
             # turn that is still running.
             clear_cancel()
             set_agent_active(True)
+            # A confirmation armed in this turn may only be spent in a later one
+            # — this is what stops the model from confirming itself.
+            confirm.begin_turn()
             timer.start()
             try:
                 agent_result = run_agent(

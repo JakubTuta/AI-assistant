@@ -1,4 +1,4 @@
-﻿import atexit
+import atexit
 import json as _json
 import sqlite3
 import threading
@@ -53,6 +53,17 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             ts    TEXT NOT NULL
         )
     """)
+    # Written lists — shopping, todo, ideas. Separate from `facts`: a fact is a
+    # single value keyed by name, a list is an ordered bag of lines that grows.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS notes (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            list_name TEXT NOT NULL,
+            text      TEXT NOT NULL,
+            ts        TEXT NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_list ON notes(list_name)")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS reminders (
             id             TEXT PRIMARY KEY,
@@ -203,17 +214,21 @@ def search_turns(
         return [dict(r) for r in rows]
 
 
-def turns_on_date(date_str: str) -> typing.List[typing.Dict]:
+def turns_on_date(date_str: str, limit: int = 50) -> typing.List[typing.Dict]:
+    """The last `limit` exchanges of that day, oldest first."""
     conn = _get_conn()
     day = _normalize_date(date_str)
     with _lock:
         rows = conn.execute(
             # id, not ts: timestamps are second-resolution, so several turns in
-            # the same second would come back in arbitrary order.
-            "SELECT id, session_id, ts, user_text, assistant_text FROM turns WHERE ts LIKE ? ORDER BY id ASC",
-            (f"{day}%",),
+            # the same second would come back in arbitrary order. Selected
+            # newest-first so the limit keeps the end of the day, then reversed
+            # back into reading order.
+            "SELECT id, session_id, ts, user_text, assistant_text FROM turns "
+            "WHERE ts LIKE ? ORDER BY id DESC LIMIT ?",
+            (f"{day}%", limit),
         ).fetchall()
-        return [dict(r) for r in rows]
+        return [dict(r) for r in reversed(rows)]
 
 
 def recent_turns(limit: int = 10) -> typing.List[typing.Dict]:
@@ -284,7 +299,67 @@ def import_facts_from_dict(data: typing.Dict[str, str]) -> None:
         conn.commit()
 
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------ notes (written lists)
+
+def add_note(list_name: str, text: str) -> int:
+    conn = _get_conn()
+    ts = datetime.now().isoformat(timespec="seconds")
+    with _lock:
+        cur = conn.execute(
+            "INSERT INTO notes (list_name, text, ts) VALUES (?, ?, ?)",
+            (list_name, text, ts),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def list_notes(list_name: str) -> typing.List[typing.Dict]:
+    """One list, oldest first — the order things were added is the reading order."""
+    conn = _get_conn()
+    with _lock:
+        rows = conn.execute(
+            "SELECT id, list_name, text, ts FROM notes WHERE list_name = ? ORDER BY id",
+            (list_name,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def remove_note(list_name: str, text: str) -> typing.Optional[str]:
+    """Delete one item by (case-insensitive) substring. Returns what was removed.
+
+    Substring, not equality: the item was dictated ("two pints of milk") and is
+    being ticked off by whatever the user calls it now ("milk").
+    """
+    conn = _get_conn()
+    with _lock:
+        row = conn.execute(
+            "SELECT id, text FROM notes WHERE list_name = ? AND lower(text) LIKE ? ORDER BY id",
+            (list_name, f"%{text.lower()}%"),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute("DELETE FROM notes WHERE id = ?", (row["id"],))
+        conn.commit()
+        return row["text"]
+
+
+def clear_notes(list_name: str) -> int:
+    conn = _get_conn()
+    with _lock:
+        cur = conn.execute("DELETE FROM notes WHERE list_name = ?", (list_name,))
+        conn.commit()
+        return cur.rowcount
+
+
+def note_lists() -> typing.Dict[str, int]:
+    """Every list that has something on it, with how many items."""
+    conn = _get_conn()
+    with _lock:
+        rows = conn.execute(
+            "SELECT list_name, COUNT(*) AS n FROM notes GROUP BY list_name ORDER BY list_name"
+        ).fetchall()
+        return {r["list_name"]: r["n"] for r in rows}
+
 
 # ------------------------------------------------------------------ reminders
 
@@ -568,15 +643,15 @@ def delete_embedding_by_ref(
 # ------------------------------------------------------------------
 
 def wipe_all() -> None:
-    """Delete every row the user owns: turns, facts, reminders, notifications,
-    mcp servers, embeddings.
+    """Delete every row the user owns: turns, facts, notes, reminders,
+    notifications, mcp servers, embeddings.
 
     Resets a fresh session id and clears the in-memory conversation window.
     """
     global SESSION_ID
     conn = _get_conn()
     with _lock:
-        for table in ("turns", "facts", "reminders", "notifications", "mcp_servers", "embeddings"):
+        for table in ("turns", "facts", "notes", "reminders", "notifications", "mcp_servers", "embeddings"):
             try:
                 conn.execute(f"DELETE FROM {table}")
             except sqlite3.OperationalError:

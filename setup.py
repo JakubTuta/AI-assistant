@@ -74,7 +74,10 @@ VENV_DIR = os.path.join(ROOT, "venv")
 CREDENTIALS = os.path.join(ROOT, "credentials")
 GOOGLE_CREDENTIALS = os.path.join(CREDENTIALS, "google_credentials.json")
 
-ALWAYS_ON = ["ai", "status", "basics"]
+# The modules setup always installs. "ai", "status" and "employer" are always-on
+# in the app itself (helpers/config.ALWAYS_ON) and are not written into
+# enabled_modules; "basics" is a real choice that everyone gets by default.
+ALWAYS_ON = ["basics"]
 
 
 # key, label, requirement files, config module (None = run-mode/enhancement),
@@ -115,6 +118,25 @@ FEATURES = [
         "module": "scheduler",
         "default": True,
         "desc": "Timers and alarms that survive restarts, and can run another job when they fire.",
+        "needs": "",
+    },
+    {
+        "key": "system",
+        "label": "Computer health (battery, disk, memory)",
+        "reqs": ["system.txt"],
+        "module": "system",
+        "default": False,
+        "desc": "Report battery level, free disk space, memory and network status.",
+        "needs": "",
+    },
+    {
+        "key": "notes",
+        # Stored in wony.db next to everything else — nothing to install.
+        "reqs": [],
+        "label": "Shopping & todo lists",
+        "module": "notes",
+        "default": True,
+        "desc": "Keep written lists by voice: add an item, read one back, tick it off.",
         "needs": "",
     },
     {
@@ -191,12 +213,13 @@ FEATURES = [
 PROBE = {
     "kiosk": "uvicorn",
     "weather": "geocoder",
-    "web": "duckduckgo_search",
+    "web": "ddgs",
     "scheduler": "apscheduler",
     "gmail": "simplegmail",
     "calendar": "googleapiclient",
     "mcp": "mcp",
     "semantic": "fastembed",
+    "system": "psutil",
 }
 
 
@@ -708,6 +731,8 @@ def configure(chosen):
         step_google(keys, pending)
     if "home_assistant" in keys:
         step_home_assistant(env, pending)
+    if "mcp" in keys:
+        step_mcp()
     if "kiosk" in keys:
         step_autostart()
     return pending
@@ -1115,6 +1140,15 @@ def step_home_assistant(env, pending):
     gate(
         "May Wony unlock doors, open the garage and disarm alarms?",
         "modules.home_assistant.allow_locks",
+    )
+
+
+def step_mcp():
+    section("MCP tool servers")
+    gate(
+        "May Wony start MCP servers itself? These are programs that run on this "
+        "device (off: it tells you the command instead)",
+        "modules.mcp.allow_install",
     )
 
 

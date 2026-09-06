@@ -71,7 +71,7 @@ def _run_power_command(verb: str, systemctl_action: str) -> str:
     return f"{verb.capitalize()}ing now. o7"
 
 
-@register_job(module_name="basics", summary="Power off or restart this device")
+@register_job(module_name="basics", summary="Power off or restart this device", confirms=True)
 @capture_response
 def power_device(action: str = "off") -> str:
     """
@@ -91,7 +91,10 @@ def power_device(action: str = "off") -> str:
     return f"Unknown action '{action}'. Use off or restart."
 
 
-@register_job(module_name="basics", summary="Send the screen to sleep, or wake it")
+# Reversible, but it blanks the display: worth confirming, because if the
+# touchscreen does not wake it the way back is an SSH session.
+@register_job(module_name="basics", summary="Send the screen to sleep, or wake it",
+              confirms={"sleep", "off", "doze", "rest"})
 @capture_response
 def sleep_device(action: str = "sleep", wake_at: str = "") -> str:
     """
@@ -185,29 +188,31 @@ def greeting() -> str:
     return "\n".join(parts)
 
 
+# Each line below is built from another module's public surface — its
+# snapshot() or a registered job — rather than reaching into its privates. The
+# briefing used to call gmail._search, gmail._format_sender,
+# cal._fetch_events_for_day and cal._format_time, so renaming any one of them
+# broke the greeting and nothing said so.
+
+
 def _weather_line() -> typing.Optional[str]:
     try:
-        import geocoder
-        from modules.weather import _get_weather_for_coordinates, temperature_symbol
+        from modules.weather import snapshot
 
-        api_key = os.environ.get("WEATHER_API_KEY")
-        if not api_key:
+        current = snapshot()
+        if current.get("error") or current.get("temperature") is None:
             return None
 
-        g = geocoder.ip("me")
-        if not g.latlng:
-            return None
-
-        lat, lon = g.latlng
-        data = _get_weather_for_coordinates(lat, lon, api_key)
-        if not data:
-            return None
-
-        desc = data["weather"][0]["description"]
-        temp = round(data["main"]["temp"])
-        city = g.city or "your location"
-        return f"Weather in {city}: {desc}, {temp}{temperature_symbol()}."
-    except Exception:
+        line = (
+            f"Weather in {current['city']}: {current['description']}, "
+            f"{round(current['temperature'])}{current['unit']}"
+        )
+        feels = current.get("feels_like")
+        if feels is not None and round(feels) != round(current["temperature"]):
+            line += f", feels like {round(feels)}{current['unit']}"
+        return line + "."
+    except Exception as e:
+        logger.log_error(str(e), "greeting.weather_line")
         return None
 
 
@@ -221,17 +226,9 @@ def _email_line() -> typing.Optional[str]:
         cutoff = (datetime.now() - timedelta(days=1)).replace(
             hour=work_end, minute=0, second=0, microsecond=0
         )
-        date_str = cutoff.strftime("%Y/%m/%d")
-
-        msgs = gmail._search(f"is:unread after:{date_str}")
-
-        if not msgs:
-            return "You have no new unread emails since yesterday."
-
-        senders = dict.fromkeys(
-            gmail._format_sender(m.sender) for m in msgs if m.sender
+        return gmail.find_emails(
+            query=f"after:{cutoff.strftime('%Y/%m/%d')}", view="overview"
         )
-        return f"You have {len(msgs)} unread email(s) from: {', '.join(senders)}."
     except Exception as e:
         logger.log_error(str(e), "greeting.email_line")
         return None
@@ -243,18 +240,18 @@ def _calendar_line() -> typing.Optional[str]:
         if not cal:
             return None
 
-        # Local, not UTC — _fetch_events_for_day stamps local tz on the date parts.
-        events = cal._fetch_events_for_day(now_local())
-
+        today = now_local().date().isoformat()
+        events = [
+            event for event in cal.agenda_snapshot(days=1).get("events", [])
+            if str(event.get("start", "")).startswith(today)
+        ]
         if not events:
             return "You have no meetings today."
 
         lines = [f"You have {len(events)} meeting(s) today:"]
-        for e in events:
-            title = e.get("summary", "Untitled")
-            start_raw = e.get("start", {}).get("dateTime") or e.get("start", {}).get("date", "")
-            when = cal._format_time(start_raw)
-            lines.append(f"  - {title} at {when}")
+        for event in events:
+            when = "all day" if event["all_day"] else event["start"][11:16]
+            lines.append(f"  - {event['title']} at {when}")
         return "\n".join(lines)
     except Exception as e:
         logger.log_error(str(e), "greeting.calendar_line")

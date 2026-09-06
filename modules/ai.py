@@ -108,19 +108,21 @@ def build_agent_system_prompt() -> typing.List[str]:
         " no 'Let me check that' or 'Playing that now' before calling a tool."
         " Call the tool silently, then narrate only in the final step once you"
         " have its result."
-        "\n\n7. REMEMBER FACTS: If the user states a personal preference or fact,"
-        " call `memory` with action 'save' to store it for future sessions."
+        "\n\n7. REMEMBER FACTS, BUT LISTS ARE NOT FACTS: If the user states a personal"
+        " preference or fact about themselves, call `remember` to store it for future"
+        " sessions. Anything that belongs on a list they will read back later —"
+        " shopping, todo, ideas — goes to `note` instead, with the list they named."
         "\n\n8. ANSWER FROM HISTORY — BUT FETCH WHEN ASKED FOR MORE: For a follow-up"
         " whose answer is already fully present in the conversation ('what was it about',"
         " 'when is that'), answer directly from history. But if the user asks for detail"
         " you do NOT already have — e.g. the briefing listed unread senders and they now"
         " ask to read those emails, see the bodies, or get details of today's meetings —"
-        " call the matching email/calendar tool to fetch it (find_emails, read_email,"
+        " call the matching email/calendar tool to fetch it (find_emails with view='full',"
         " find_events, etc.). You DO have access to the user's Gmail and Calendar via"
         " these tools: never reply that you cannot access their email or calendar. A tool"
         " returning zero results is a valid answer ('no unread emails'), not an error."
         " This applies to timers/reminders too — 'how much time is left' or 'is my alarm"
-        " still running' means call `list_reminders` for the real remaining time. Never"
+        " still running' means call `manage_reminders` for the real remaining time. Never"
         " compute or guess a countdown yourself from when it was set."
         "\n\n9. RECALL FROM PERSISTENT HISTORY: If the user asks about past conversations"
         " across sessions ('what did we discuss last week', 'did I mention X before',"
@@ -224,7 +226,7 @@ class AI:
 
         return answer
 
-    @register_job
+    @register_job(module_name="ai")
     @capture_response
     @staticmethod
     def clear_conversation() -> str:
@@ -238,17 +240,17 @@ class AI:
         Conversation.clear()
         return "Conversation history cleared."
 
-    @register_job
+    @register_job(module_name="ai", confirms={"forget", "remove", "delete"})
     @capture_response
     @staticmethod
-    def memory(action: str = "list", fact: str = "", topic: str = "") -> str:
+    def remember(action: str = "save", fact: str = "", topic: str = "") -> str:
         """
-        [AI SERVICE JOB] The assistant's long-term memory of personal facts and
-        preferences: save one, forget one, or list everything stored. Saved facts are
-        available in every future session.
+        [AI SERVICE JOB] Stores something about the user for every future session — a
+        preference, a name, a fact they stated — or forgets one again. Reading back what
+        is stored is `recall`.
 
         Args:
-            action (str): "list" (the default), "save", or "forget".
+            action (str): "save" (the default) or "forget".
             fact (str): The fact to save, as the user stated it. (required when saving)
             topic (str): Short snake_case subject the fact is about, e.g. "preferred_units",
                 "boss". Reuse the same topic when updating a fact so it overwrites rather
@@ -256,21 +258,13 @@ class AI:
                 to remove when forgetting.
 
         Returns:
-            str: The stored memory, or confirmation of the change.
+            str: Confirmation of the change.
         """
         import re
 
         from helpers.profile import Profile
 
-        wanted = (action or "list").strip().lower()
-
-        if wanted in ("list", "show", "all"):
-            facts = Profile.all()
-            if not facts:
-                return "No facts stored in memory."
-            return "Stored memory:\n" + "\n".join(
-                f"  {key}: {value}" for key, value in sorted(facts.items())
-            )
+        wanted = (action or "save").strip().lower()
 
         if wanted in ("save", "remember", "store", "add"):
             if not fact:
@@ -294,32 +288,55 @@ class AI:
                 return f"Forgotten: {', '.join(matches)}"
             return f"No memory found matching: {key}"
 
-        return f"Unknown action '{action}'. Use list, save or forget."
+        return f"Unknown action '{action}'. Use save or forget."
 
-    @register_job
+    @register_job(module_name="ai")
     @capture_response
     @staticmethod
-    def recall(query: str = "", date: str = "", limit: int = 5) -> str:
+    def recall(query: str = "", scope: str = "all", date: str = "", limit: int = 5) -> str:
         """
-        [AI SERVICE JOB] Searches past conversations, including ones from earlier
-        sessions that the current chat no longer holds. Searches by meaning as well as
-        by wording, so it answers "what did we say about the dentist", "what did we talk
-        about on Tuesday", and "what were we just discussing" alike.
+        [AI SERVICE JOB] Searches everything Wony remembers — past conversations from
+        earlier sessions, saved facts about the user, and indexed documents — and
+        returns what matches. Searches by meaning as well as by wording, so it answers
+        "what did we say about the dentist", "what did we talk about on Tuesday",
+        "what do you know about me" and "what does my lease say" alike.
 
         Args:
             query (str): What to look for. Leave empty to get the most recent exchanges.
+            scope (str): Where to look: "all" (the default), "conversations", "facts"
+                or "documents".
             date (str): Restrict to a single day, e.g. "yesterday", "last Monday", "2024-12-25".
-            limit (int): How many exchanges to return (default 5).
+            limit (int): How many results to return (default 5).
 
         Returns:
-            str: Matching past exchanges with timestamps.
+            str: What was found, grouped by where it came from.
         """
         from helpers.memory_db import recent_turns, search_turns, turns_on_date
 
         count = max(1, int(limit or 5))
+        where = (scope or "all").strip().lower()
+
+        if where in ("facts", "fact", "profile", "about_me"):
+            return AI._stored_facts(query)
+        if where in ("documents", "docs", "document"):
+            return AI._document_matches(query, count)
+
+        if where == "all" and query and not date:
+            # One query, every store: the user asking "what do you know about my
+            # lease" cannot be expected to know which of the three it landed in.
+            blocks = [
+                block for block in (
+                    AI._conversation_matches(query, count),
+                    AI._document_matches(query, count, quiet=True),
+                    AI._stored_facts(query, quiet=True),
+                ) if block
+            ]
+            if blocks:
+                return "\n\n".join(blocks)
+            return f"Nothing in memory matches '{query}'."
 
         if date:
-            turns = turns_on_date(date)
+            turns = turns_on_date(date, limit=count)
             if not turns:
                 return f"No conversation history found for '{date}'."
             return AI._render_turns(turns, f"Conversation history for '{date}'")
@@ -330,14 +347,44 @@ class AI:
                 return "No conversation history found."
             return AI._render_turns(turns, f"Most recent {len(turns)} exchange(s)")
 
+        return AI._conversation_matches(query, count) or (
+            f"Nothing in past conversations matches '{query}'."
+        )
+
+    @staticmethod
+    def _conversation_matches(query: str, count: int) -> str:
+        from helpers.memory_db import search_turns
+
         semantic_lines = AI._semantic_matches(query, count)
         if semantic_lines:
             return semantic_lines
 
         turns = search_turns(query, days_back=365, limit=count)
         if not turns:
-            return f"Nothing in past conversations matches '{query}'."
+            return ""
         return AI._render_turns(turns, f"Past exchanges matching '{query}'")
+
+    @staticmethod
+    def _stored_facts(query: str = "", quiet: bool = False) -> str:
+        """Saved profile facts, optionally narrowed to ones mentioning `query`.
+
+        quiet: return "" instead of a "nothing found" sentence, for the combined
+        search where another store may still have the answer.
+        """
+        from helpers.profile import Profile
+
+        facts = Profile.all()
+        if query:
+            needle = query.lower()
+            facts = {
+                key: value for key, value in facts.items()
+                if needle in key.lower() or needle in str(value).lower()
+            }
+        if not facts:
+            return "" if quiet else "No facts stored in memory."
+        return "Stored facts:\n" + "\n".join(
+            f"  {key}: {value}" for key, value in sorted(facts.items())
+        )
 
     @staticmethod
     def _semantic_matches(query: str, count: int) -> str:
@@ -375,74 +422,106 @@ class AI:
                 lines.append(f"  Assistant: {preview}")
         return "\n".join(lines)
 
-    @register_job
+    @register_job(module_name="ai", confirms={"forget", "remove", "delete"})
     @capture_response
     @staticmethod
-    def index_document(path: str = "") -> str:
+    def manage_documents(action: str = "list", path: str = "") -> str:
         """
-        [AI SERVICE JOB] Indexes a local file for semantic recall via ask_my_docs.
-        Extracts text from the file and embeds it for future retrieval.
-        Supports text files, PDFs (via pdfminer/pypdf2 if available), and plain text.
+        [AI SERVICE JOB] Manages the personal documents Wony can search: adds a file so
+        its contents become searchable, lists what has been added, or forgets one again.
+        Searching them is `recall` with scope 'documents'.
 
         Args:
-            path (str): Absolute or home-relative path to the file to index. (required)
+            action (str): "list" (the default), "add" or "forget".
+            path (str): Path to the file, absolute or starting with ~.
+                (required for add and forget)
 
         Returns:
-            str: Confirmation with character count, or error.
+            str: The indexed files, or confirmation of the change.
         """
         import os
 
         from helpers import semantic as _sem
 
-        if not path:
-            return "Error: No file path provided."
+        wanted = (action or "list").strip().lower()
 
         if not _sem.is_available():
-            return "Semantic indexing unavailable — install fastembed: pip install fastembed"
+            return "Document indexing unavailable — install fastembed: pip install fastembed"
+
+        if wanted in ("list", "show"):
+            files = AI._indexed_files()
+            if not files:
+                return "No documents indexed yet. Add one with action 'add'."
+            lines = [f"{len(files)} indexed document(s):"]
+            for source, chunks in sorted(files.items()):
+                lines.append(f"  {os.path.basename(source)} ({chunks} chunk(s)) — {source}")
+            return "\n".join(lines)
+
+        if not path:
+            return f"Error: a file path is required to {wanted} a document."
 
         path = os.path.expanduser(path)
-        if not os.path.isfile(path):
-            return f"Error: File not found: '{path}'"
 
-        text = _extract_text(path)
-        if not text:
-            return f"Could not extract text from '{path}'."
+        if wanted in ("add", "index"):
+            if not os.path.isfile(path):
+                return f"Error: File not found: '{path}'"
+            text = _extract_text(path)
+            if not text:
+                return f"Could not extract text from '{path}'."
+            chunks = _sem.store_doc(path, text)
+            return (
+                f"Indexing '{os.path.basename(path)}' ({len(text)} chars, "
+                f"{chunks} chunk(s)). Ask about it with recall."
+            )
 
-        chunks = _sem.store_doc(path, text)
-        return (
-            f"Indexing '{os.path.basename(path)}' ({len(text)} chars, {chunks} chunk(s)). "
-            "Use ask_my_docs to query it."
-        )
+        if wanted in ("forget", "remove", "delete"):
+            from helpers.memory_db import delete_embeddings_by_key_prefix
 
-    @register_job
-    @capture_response
+            # Chunks are keyed "<path>#<index>", so the prefix is the whole file.
+            known = AI._indexed_files()
+            match = next(
+                (source for source in known if os.path.normcase(source) == os.path.normcase(path)),
+                None,
+            )
+            if match is None:
+                return f"'{os.path.basename(path)}' is not indexed."
+            delete_embeddings_by_key_prefix("doc", f"{match}#")
+            return f"Forgot '{os.path.basename(match)}'."
+
+        return f"Unknown action '{action}'. Use list, add or forget."
+
     @staticmethod
-    def ask_my_docs(query: str = "") -> str:
-        """
-        [AI SERVICE JOB] Answers a question using semantically indexed personal documents.
-        Retrieves the most relevant document chunks and synthesises an answer.
+    def _indexed_files() -> typing.Dict[str, int]:
+        """{file path: chunk count} for everything in the document index."""
+        from helpers.memory_db import all_embeddings
 
-        Args:
-            query (str): The question to answer from indexed documents. (required)
+        counts: typing.Dict[str, int] = {}
+        for row in all_embeddings(source_types=["doc"]):
+            source = str(row.get("ref_key") or "").rsplit("#", 1)[0]
+            if source:
+                counts[source] = counts.get(source, 0) + 1
+        return counts
 
-        Returns:
-            str: Answer synthesised from the most relevant document chunks.
-        """
+    @staticmethod
+    def _document_matches(query: str, count: int, quiet: bool = False) -> str:
+        """Passages from indexed documents, named by the file they came from."""
+        import os
+
         from helpers import semantic as _sem
 
         if not query:
-            return "Error: No query provided."
-
+            return "" if quiet else "Error: No query provided."
         if not _sem.is_available():
-            return (
+            return "" if quiet else (
                 "Document search unavailable — install fastembed: pip install fastembed"
             )
 
-        results = _sem.retrieve(query, k=5, source_types=["doc"])
+        results = _sem.retrieve(query, k=count, source_types=["doc"])
         if not results:
-            return "No indexed documents found. Use index_document to add files first."
-
-        import os
+            return "" if quiet else (
+                "Nothing in your indexed documents matches that. "
+                "Add files with manage_documents."
+            )
 
         blocks = []
         for r in results:

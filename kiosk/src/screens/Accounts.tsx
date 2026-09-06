@@ -307,7 +307,7 @@ function AddSheet({
     setBusy(true)
     setKeyboard(false)
     setResult(null)
-    const response = await invokeJob('add_google_account', { name: label })
+    const response = await invokeJob('manage_google_accounts', { action: 'add', name: label })
     setResult({
       text: response.ok ? response.result || 'Done.' : response.error || 'Failed.',
       ok: response.ok,
@@ -416,7 +416,7 @@ function AccountSheet({
   const rename = () => {
     const next = newName.trim()
     if (!next || next === account.name) return
-    run('rename', 'edit_google_account', { name: account.name, new_name: next }, true)
+    run('rename', 'manage_google_accounts', { action: 'rename', name: account.name, new_name: next }, true)
   }
 
   const missing =
@@ -456,7 +456,7 @@ function AccountSheet({
             icon={<Star size={18} />}
             label="Make this the default account"
             busy={busy === 'primary'}
-            onClick={() => run('primary', 'set_primary_account', { name: account.name }, true)}
+            onClick={() => run('primary', 'manage_google_accounts', { action: 'set_primary', name: account.name }, true)}
             disabled={busy !== null}
           />
         )}
@@ -466,7 +466,7 @@ function AccountSheet({
           label={missing ? 'Sign in' : 'Sign in again'}
           busy={busy === 'authorize'}
           onClick={() =>
-            run('authorize', 'authorize_google_account', { name: account.name }, false)
+            run('authorize', 'manage_google_accounts', { action: 'authorize', name: account.name }, false)
           }
           disabled={busy !== null}
         />
@@ -487,7 +487,7 @@ function AccountSheet({
               setConfirmRemove(true)
               return
             }
-            run('remove', 'remove_google_account', { name: account.name }, true)
+            run('remove', 'manage_google_accounts', { action: 'remove', name: account.name }, true)
           }}
         />
         {confirmRemove && busy === null && (

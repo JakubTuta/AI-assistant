@@ -152,19 +152,19 @@ class TestReminders(unittest.TestCase):
 
         self._add(when="in 5 minutes", text="one")
         self._add(when="in 10 minutes", text="two")
-        listing = Scheduler.list_reminders(self.sched)
+        listing = Scheduler.manage_reminders(self.sched)
         self.assertIn("2 active", listing)
         self.assertIn("in 5 minutes", listing)
 
-        self.assertIn("Cancelled", Scheduler.cancel_reminder(self.sched, "all"))
-        self.assertEqual(Scheduler.list_reminders(self.sched), "Nothing scheduled.")
+        self.assertIn("Cancelled", Scheduler.manage_reminders(self.sched, "cancel", "all"))
+        self.assertEqual(Scheduler.manage_reminders(self.sched), "Nothing scheduled.")
 
     def test_cancel_finds_an_action_only_timer_by_job_name(self) -> None:
         from modules.scheduler import Scheduler
 
         # An action-only timer has no text, so job name is the only handle on it.
         self._add(when="in 5 minutes", action_job="_fake_device", action_args={})
-        self.assertIn("Cancelled", Scheduler.cancel_reminder(self.sched, "_fake_device"))
+        self.assertIn("Cancelled", Scheduler.manage_reminders(self.sched, "cancel", "_fake_device"))
 
     def test_action_waits_for_the_agent_lock(self) -> None:
         from helpers.decorators import agent_lock

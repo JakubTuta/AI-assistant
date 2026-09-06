@@ -18,6 +18,11 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _REPO_ROOT)
 
 _NO_DESC = "No description available"
+
+# Ceiling on the whole job list with every module enabled. 73 before the audit,
+# 47 after the Tier 2 consolidation, 52 once Tier 3 spent five of the freed
+# slots. The headroom above 52 is small on purpose.
+_JOB_BUDGET = 55
 _DOCUMENTED_ARG = re.compile(r"^[ \t]*(\w+)[ \t]*\([^)]*\)[ \t]*:", re.MULTILINE)
 
 
@@ -36,10 +41,53 @@ class TestToolSchemas(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.jobs = _load_jobs()
 
+    def test_the_job_budget_has_not_quietly_regrown(self) -> None:
+        """Every registered job is sent to the model on every request, so the
+        list is a token budget and an accuracy budget at once. It was cut from
+        73 to 47 and then deliberately spent back up to 52; a new job is a
+        decision, not an accident.
+
+        Counted with every module switched on, which CI cannot do, so this
+        only asserts the ceiling it can actually see.
+        """
+        self.assertLessEqual(
+            len(self.jobs), _JOB_BUDGET,
+            "The job list has grown past the budget. If the new job is right, "
+            "raise _JOB_BUDGET here on purpose and say why.",
+        )
+
     def test_jobs_are_registered(self) -> None:
         # Deliberately low: CI installs core deps only, so most optional
         # modules gate themselves off. The point is that discovery ran at all.
         self.assertGreater(len(self.jobs), 5, "job registry looks empty")
+
+    def test_every_job_is_wrapped_by_capture_response(self) -> None:
+        """@register_job registers whatever callable sits directly beneath it.
+        Written the other way round — @capture_response on the outside — the
+        registry keeps the *raw* function, so that job silently loses error
+        capture and logging. League's three jobs shipped
+        like that. `_quiet_success` is the marker capture_response leaves behind.
+        """
+        from helpers.registry import ServiceRegistry
+
+        # exit() ends in SystemExit, which is a BaseException and so escapes
+        # capture_response entirely; it prints its own farewell instead.
+        exempt = {"exit"}
+
+        modules = ServiceRegistry.get_job_modules()
+        unwrapped = [
+            name
+            for name, func in self.jobs.items()
+            # MCP tools are wrappers built at connect time, not decorated jobs.
+            if name not in exempt
+            and not modules.get(name, "").startswith("mcp:")
+            and not hasattr(func, "_captures_response")
+        ]
+        self.assertFalse(
+            unwrapped,
+            "Jobs registered without @capture_response underneath "
+            "(swap the decorator order): " + ", ".join(sorted(unwrapped)),
+        )
 
     def test_every_job_parses(self) -> None:
         from helpers.tools import _parse_signature

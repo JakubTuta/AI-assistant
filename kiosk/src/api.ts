@@ -109,6 +109,17 @@ export interface RemindersPanel {
   reminders: Reminder[]
 }
 
+export interface NoteList {
+  name: string
+  /** Everything on the list, not just what fits on the screen. */
+  count: number
+  items: string[]
+}
+
+export interface NotesPanel {
+  lists: NoteList[]
+}
+
 /** One entity, already decided to be exactly one widget. */
 export interface Control {
   entity_id: string
@@ -358,6 +369,7 @@ async function fetchPanel<T>(key: string): Promise<PanelResult<T>> {
 export const fetchWeather = () => fetchPanel<WeatherPanel>('weather')
 export const fetchAgenda = () => fetchPanel<AgendaPanel>('agenda')
 export const fetchReminders = () => fetchPanel<RemindersPanel>('reminders')
+export const fetchNotes = () => fetchPanel<NotesPanel>('notes')
 export const fetchDevices = () => fetchPanel<DevicesPanel>('devices')
 export const fetchGoogleAccounts = () => fetchPanel<GoogleAccountsSnapshot>('accounts')
 

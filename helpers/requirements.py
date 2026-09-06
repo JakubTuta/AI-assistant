@@ -29,7 +29,12 @@ def evaluate(req: Requirement) -> typing.Tuple[bool, str]:
 
     for mod in req.pip_modules:
         if importlib.util.find_spec(mod) is None:
-            return False, f"pip module not installed: {mod}"
+            # A package installed while Wony is running stays invisible until
+            # the path-finder's directory listings are dropped — which is
+            # exactly the retry case this is re-evaluated for.
+            importlib.invalidate_caches()
+            if importlib.util.find_spec(mod) is None:
+                return False, f"pip module not installed: {mod}"
 
     if req.check is not None:
         try:

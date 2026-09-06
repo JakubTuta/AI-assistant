@@ -32,6 +32,9 @@ _DEFAULT_POLL_INTERVAL_MINUTES = 15
 # Unread messages a poll tick scans. Above the display default so a burst of new
 # mail between two ticks is announced in full rather than partly missed.
 _POLL_SCAN_LIMIT = 100
+# Unread messages the overview reads headers for to work out who they are from.
+# Enough to make "top senders" meaningful without a slow batch on a big backlog.
+_OVERVIEW_SENDER_SCAN = 50
 
 
 @dataclasses.dataclass
@@ -565,8 +568,15 @@ class Gmail:
             Cache.set_value(cache_key, (announced + [m.id for m in new])[-500:])
         return new
 
-    def _search(self, query: str, max_results: int = 0, account: str = "") -> typing.List[Msg]:
-        """Public search helper returning Msg list (for external callers)."""
+    def search_messages(
+        self, query: str, max_results: int = 0, account: str = ""
+    ) -> typing.List[Msg]:
+        """Raw Gmail search for callers outside this module.
+
+        find_emails writes prose for the model; this is the same search handed
+        over before it became words, for code that needs the fields — the
+        proactive trigger in helpers/triggers.py, for one.
+        """
         return self._fetch(self._scope(query), max_results, account)
 
     @staticmethod
@@ -638,14 +648,15 @@ class Gmail:
         important: bool = False,
         has_attachment: bool = False,
         max_results: int = 0,
+        view: str = "list",
         account: str = "",
     ) -> str:
         """
-        [EMAIL MANAGEMENT JOB] Finds emails in Gmail. This is the single tool for every
+        [EMAIL MANAGEMENT JOB] Finds and reads email. This is the single tool for every
         kind of email lookup — unread mail, recent mail, mail from a person, by label,
-        starred, important, or with attachments. Combine filters freely; with no filters
-        it lists recent inbox mail. Returns headers and previews, not full bodies —
-        use read_email for the body of one message.
+        starred, important, or with attachments — and `view` decides how much comes
+        back: a list of previews, one full message, a whole conversation, or a summary
+        of the inbox. Combine filters freely; with no filters it lists recent inbox mail.
 
         Args:
             query (str): Raw Gmail search syntax, e.g. 'from:boss subject:report'. Use
@@ -660,11 +671,25 @@ class Gmail:
             important (bool): Only mail Gmail marked important.
             has_attachment (bool): Only mail with file attachments.
             max_results (int): Cap on how many to return (defaults to 20).
+            view (str): How much to return. "list" (the default) is headers and
+                previews for several; "full" is the whole body of the best match;
+                "thread" is the entire conversation it belongs to; "overview" is
+                unread counts and top senders instead of messages.
             account (str): Google account to use (default: primary).
 
         Returns:
             str: Matching emails with sender, subject, date and a preview.
         """
+        wanted = (view or "list").strip().lower()
+        if wanted == "overview":
+            return self._inbox_overview(self._locator(query, sender, subject), account)
+        if wanted == "full":
+            return self._read_one(query, sender, subject, folder, account)
+        if wanted == "thread":
+            return self._read_thread(query, subject, account)
+        if wanted not in ("list", ""):
+            return f"Unknown view '{view}'. Use list, full, thread or overview."
+
         terms: typing.List[str] = []
         described: typing.List[str] = []
 
@@ -717,25 +742,11 @@ class Gmail:
         )
 
 
-    @capture_response
-    @method_job
-    def read_email(self, query: str = "", sender: str = "", subject: str = "", folder: str = "", account: str = "") -> str:
-        """
-        [EMAIL MANAGEMENT JOB] Reads the full body of the most recent matching email.
-        With no filters this is the latest email in the folder, so it also answers
-        "read my last email" / "what was the last thing I sent". Use find_emails to
-        list several; use this to actually read one.
+    def _read_one(self, query: str, sender: str, subject: str, folder: str, account: str) -> str:
+        """The full body of the most recent matching email (view="full").
 
-        Args:
-            query (str): Raw Gmail search syntax to locate the email.
-            sender (str): Only mail from this name or address.
-            subject (str): Only mail whose subject matches these keywords.
-            folder (str): Which folder to look in: inbox (default), sent, drafts.
-            account (str): Google account to use (default: primary).
-
-        Returns:
-            str: Full email body and headers.
-        """
+        With no filters this is the latest email in the folder, so it also
+        answers "read my last email" / "what was the last thing I sent"."""
         scoped = self._scope(self._locator(query, sender, subject), folder=folder)
 
         messages = self._fetch(scoped, 10, account)
@@ -744,37 +755,32 @@ class Gmail:
 
         return self._format_message(messages[0], verbose=True)
 
-    @capture_response
-    @method_job
-    def inbox_overview(self, detailed: bool = False, account: str = "") -> str:
-        """
-        [EMAIL MANAGEMENT JOB] Summarises the state of the inbox: how many unread
-        emails there are, and — with detailed=true — who they are from and how much
-        recent mail carries attachments. Answers "how many unread do I have" and
-        "what's in my inbox" alike. Use find_emails to actually list the messages.
+    def _inbox_overview(self, locator: str = "", account: str = "") -> str:
+        """How much unread mail there is and who it is from (view="overview").
 
-        Args:
-            detailed (bool): Add top unread senders and the recent attachment count.
-            account (str): Google account to use (default: every configured account).
-
-        Returns:
-            str: Unread counts, plus the extra breakdown when detailed is set.
+        `locator` narrows it the same way it narrows the list view, so the daily
+        briefing can ask for "unread since yesterday" and get a summary rather
+        than a wall of previews.
         """
         names = self._accounts(account)
         unread_total = 0
         per_account: typing.List[str] = []
         attachments = 0
         senders: typing.Dict[str, int] = {}
+        scoped_unread = self._scope(" ".join(p for p in ("is:unread", locator) if p))
 
         for name in names:
             svc = self._svc(name)
-            count = self._label_counts(svc, "INBOX").get("messagesUnread", 0)
+            if locator:
+                count = self._count(svc, scoped_unread)
+            else:
+                # The label counter is one cheap call for the whole mailbox;
+                # a filtered count has to be searched for.
+                count = self._label_counts(svc, "INBOX").get("messagesUnread", 0)
             unread_total += count
             per_account.append(f"{name}: {count}")
-            if not detailed:
-                continue
             attachments += self._count(svc, self._scope("has:attachment newer_than:7d"))
-            refs = self._list_ids(svc, self._scope("is:unread"), 50)
+            refs = self._list_ids(svc, scoped_unread, _OVERVIEW_SENDER_SCAN)
             for msg in self._batch_get(svc, refs, "metadata", self._label_map(name)):
                 who = self._format_sender(msg.sender or "Unknown")
                 senders[who] = senders.get(who, 0) + 1
@@ -783,8 +789,6 @@ class Gmail:
         if len(names) > 1:
             headline += " — " + ", ".join(per_account)
         headline += "."
-        if not detailed:
-            return headline
 
         lines = [headline, f"With attachments (last 7 days): {attachments}"]
         top = sorted(senders.items(), key=lambda item: item[1], reverse=True)[:5]
@@ -837,21 +841,9 @@ class Gmail:
 
 
 
-    @capture_response
-    @method_job
-    def get_email_thread(self, query: str = "", subject: str = "", account: str = "") -> str:
-        """
-        [EMAIL MANAGEMENT JOB] Retrieves a full email conversation thread, oldest
-        message first.
-
-        Args:
-            query (str): Search query to find the thread (sender, subject, keywords).
-            subject (str): Subject of the thread to find.
-            account (str): Google account to use (default: primary).
-
-        Returns:
-            str: Full thread oldest to newest.
-        """
+    def _read_thread(self, query: str, subject: str, account: str) -> str:
+        """The whole conversation the best match belongs to, oldest message
+        first (view="thread")."""
         if not query and not subject:
             return "Please provide a query or subject to find the thread."
 
@@ -951,27 +943,34 @@ class Gmail:
     # ------------------------------------------------------------------
 
     @capture_response
-    @method_job
+    @method_job(confirms=True)
     def send_email(
         self,
-        to: str,
+        to: str = "",
         subject: str = "",
         body: str = "",
+        reply_to_query: str = "",
         account: str = "",
     ) -> str:
         """
-        [EMAIL MANAGEMENT JOB] Composes and sends a new email. While sending is
+        [EMAIL MANAGEMENT JOB] Sends an email — either a new message to an address, or
+        a reply to an existing conversation found by reply_to_query. While sending is
         switched off it saves the message as a Gmail draft instead, so nothing is lost.
 
         Args:
-            to (str): Recipient email address. (required)
+            to (str): Recipient email address. (required for a new message)
             subject (str): Email subject line (provide subject or body or both).
-            body (str): Plain text body of the email (provide subject or body or both).
+            body (str): Plain text body of the email. (required when replying)
+            reply_to_query (str): Search for the email to reply to — a sender, a
+                subject, or Gmail search syntax. Set this instead of `to` to reply.
             account (str): Google account to send from (default: primary).
 
         Returns:
             str: Confirmation that the email was sent or saved as draft.
         """
+        if reply_to_query:
+            return self._send_reply(reply_to_query, body, account)
+
         if not to:
             return "Error: Recipient address (to) is required."
         if not subject and not body:
@@ -1000,37 +999,14 @@ class Gmail:
             return f"Failed to send email: {e}"
         return f"Email sent to {to} with subject '{subj}'."
 
-    @capture_response
-    @method_job
-    def reply_to_email(
-        self,
-        query: str = "",
-        sender: str = "",
-        subject: str = "",
-        reply_body: str = "",
-        account: str = "",
-    ) -> str:
-        """
-        [EMAIL MANAGEMENT JOB] Replies to an existing email thread. While sending is
-        switched off it saves the reply as a Gmail draft instead.
-
-        Args:
-            query (str): Gmail search query to find the email to reply to.
-            sender (str): Filter by sender address or name to find the email.
-            subject (str): Subject or partial subject to find the email.
-            reply_body (str): Text of the reply. (required) Provide at least one of query/sender/subject to identify which email.
-            account (str): Google account to use (default: search every account).
-
-        Returns:
-            str: Confirmation that the reply was sent or saved as draft.
-        """
+    def _send_reply(self, reply_to_query: str, reply_body: str, account: str) -> str:
+        """Reply to the newest email matching reply_to_query, or save it as a
+        draft when sending is switched off."""
         if not reply_body:
-            return "Error: reply_body is required."
+            return "Error: a reply needs a body."
 
         try:
-            found = self._find_latest(
-                self._scope(self._locator(query, sender, subject)), account
-            )
+            found = self._find_latest(self._scope(reply_to_query), account)
         except Exception as e:
             return f"Error searching for message: {e}"
 
@@ -1060,74 +1036,126 @@ class Gmail:
             return f"Failed to send reply: {e}"
         return f"Reply sent to {msg.sender} in thread '{reply_subject}'."
 
+    # What each modify action does to a message's labels, and the extra search
+    # term that keeps it from touching mail it cannot change (marking read mail
+    # read, starring what is already starred). Only archive is inbox-scoped:
+    # everything else is a state the user names explicitly, and confining it to
+    # the inbox would silently skip the mail they meant.
+    _MODIFY_ACTIONS: typing.Dict[str, typing.Dict[str, typing.Any]] = {
+        "read": {"remove": ["UNREAD"], "filter": "is:unread", "verb": "marked as read"},
+        "unread": {"add": ["UNREAD"], "filter": "-is:unread", "verb": "marked as unread"},
+        "star": {"add": ["STARRED"], "filter": "-is:starred", "verb": "starred"},
+        "unstar": {"remove": ["STARRED"], "filter": "is:starred", "verb": "unstarred"},
+        "archive": {"remove": ["INBOX"], "filter": "", "verb": "archived", "inbox_only": True},
+    }
+
     @capture_response
-    @method_job
-    def mark_as_read(
+    @method_job(confirms=True)
+    def modify_emails(
         self,
+        action: str = "read",
         query: str = "",
         sender: str = "",
         subject: str = "",
+        label: str = "",
         account: str = "",
     ) -> str:
         """
-        [EMAIL MANAGEMENT JOB] Marks matching unread emails as read.
+        [EMAIL MANAGEMENT JOB] Changes the state of matching emails: marks them read or
+        unread, stars or unstars them, archives them, adds or removes a label, or moves
+        them to Trash.
 
         Args:
-            query (str): Gmail search query to find emails to mark as read.
+            action (str): "read" (the default), "unread", "star", "unstar", "archive",
+                "label", "unlabel" or "delete".
+            query (str): Gmail search query to find the emails to change.
             sender (str): Filter by sender address or name.
             subject (str): Subject or partial subject to filter.
+            label (str): Which label to add or remove. (required for label/unlabel)
             account (str): Google account to use (default: every configured account).
 
         Returns:
-            str: Confirmation with count of messages marked as read.
+            str: Confirmation with the count of messages changed.
         """
-        locator = " ".join(
-            part for part in ("is:unread", self._locator(query, sender, subject)) if part
+        wanted = (action or "read").strip().lower()
+
+        if not self._write_allowed():
+            return self._write_disabled_note("Changing email")
+
+        locator = self._locator(query, sender, subject)
+
+        if wanted in ("delete", "trash"):
+            # Deletes need a locator: an empty one would trash the whole inbox.
+            if not locator:
+                return "Error: Provide at least one of query, sender, or subject."
+            return self._trash_matching(locator, account)
+
+        if wanted in ("label", "unlabel"):
+            if not label:
+                return f"Error: 'label' is required for action '{wanted}'."
+            return self._apply_label(wanted, locator, label, account)
+
+        spec = self._MODIFY_ACTIONS.get(wanted)
+        if spec is None:
+            return (
+                f"Unknown action '{action}'. Use read, unread, star, unstar, "
+                "archive, label, unlabel or delete."
+            )
+
+        scoped = self._scope(
+            " ".join(part for part in (spec["filter"], locator) if part),
+            no_inbox_prefix=not spec.get("inbox_only"),
         )
         try:
-            per_account = self._find_ids(self._scope(locator), account, 500)
+            per_account = self._find_ids(scoped, account, 500)
         except Exception as e:
             return f"Error searching for messages: {e}"
 
         if not per_account:
-            return "No unread messages matched."
+            return "No messages matched."
 
-        marked = 0
+        changed = 0
         for name, ids in per_account:
-            marked += self._batch_modify(
-                self._svc(name), ids, add_labels=[], remove_labels=["UNREAD"]
+            changed += self._batch_modify(
+                self._svc(name), ids,
+                add_labels=list(spec.get("add", [])),
+                remove_labels=list(spec.get("remove", [])),
             )
-        return f"Marked {marked} message(s) as read."
+        return f"{changed} message(s) {spec['verb']}."
 
-    @capture_response
-    @method_job
-    def delete_email(
-        self,
-        query: str = "",
-        sender: str = "",
-        subject: str = "",
-        account: str = "",
-    ) -> str:
-        """
-        [EMAIL MANAGEMENT JOB] Moves matching emails to Trash, where Gmail keeps them
-        for 30 days.
+    def _apply_label(self, action: str, locator: str, label: str, account: str) -> str:
+        """Add or remove one Gmail label across every matching message."""
+        try:
+            per_account = self._find_ids(
+                self._scope(locator, no_inbox_prefix=True), account, 500
+            )
+        except Exception as e:
+            return f"Error searching for messages: {e}"
 
-        Args:
-            query (str): Gmail search query to find emails to delete.
-            sender (str): Filter by sender address or name.
-            subject (str): Subject or partial subject to filter.
-            account (str): Google account to use (default: every configured account).
+        if not per_account:
+            return "No messages matched."
 
-        Returns:
-            str: Confirmation with count of messages moved to trash.
-        """
-        locator = self._locator(query, sender, subject)
-        if not locator:
-            return "Error: Provide at least one of query, sender, or subject."
+        changed = 0
+        missing: typing.List[str] = []
+        for name, ids in per_account:
+            # Gmail's modify API takes label ids, not the names the user says.
+            ids_by_name = {v: k for k, v in self._label_map(name).items()}
+            label_id = ids_by_name.get(label)
+            if label_id is None:
+                missing.append(name)
+                continue
+            changed += self._batch_modify(
+                self._svc(name), ids,
+                add_labels=[label_id] if action == "label" else [],
+                remove_labels=[] if action == "label" else [label_id],
+            )
 
-        if not self._write_allowed():
-            return self._write_disabled_note("Deleting email")
+        if not changed and missing:
+            return f"No label called '{label}' in {', '.join(missing)}."
+        verb = "labelled" if action == "label" else "unlabelled"
+        return f"{changed} message(s) {verb} '{label}'."
 
+    def _trash_matching(self, locator: str, account: str) -> str:
         try:
             per_account = self._find_ids(self._scope(locator), account, 100)
         except Exception as e:
@@ -1148,7 +1176,7 @@ class Gmail:
         return f"Moved {trashed} message(s) to trash."
 
     @capture_response
-    @method_job
+    @method_job(confirms={"delete"})
     def manage_drafts(
         self,
         action: str = "list",
@@ -1251,6 +1279,11 @@ class Gmail:
             return f"Draft [{draft_id}] updated — To: {new_to}, Subject: '{new_subject}'."
 
         if wanted == "delete":
+            # Creating and editing drafts stay ungated: with allow_write off,
+            # saving a draft is what send_email falls back to. Deleting one
+            # destroys something the user wrote.
+            if not self._write_allowed():
+                return self._write_disabled_note("Deleting a draft")
             if not draft_id:
                 return "Error: draft_id is required — use action 'list' to see them."
             try:

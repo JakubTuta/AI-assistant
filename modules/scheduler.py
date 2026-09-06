@@ -1,4 +1,4 @@
-﻿import json
+import json
 import re
 import typing
 import uuid
@@ -9,6 +9,12 @@ from helpers.decorators import capture_response
 from helpers.logger import logger
 from helpers.registry import ServiceRegistry, method_job, register_service
 from helpers.requirements import Requirement
+
+# How stale a missed timer's action may be and still be run on the next start.
+# Inside the window, "turn the lights off" that fired while the PC was asleep is
+# still what the user wants; ten hours later it is a surprise, so Wony asks
+# instead of acting.
+_MISSED_ACTION_GRACE_MINUTES = 60
 
 _WEEKDAYS: typing.Dict[str, str] = {
     "monday": "mon", "tuesday": "tue", "wednesday": "wed",
@@ -127,7 +133,10 @@ class Scheduler:
 
         self._sched = BackgroundScheduler(daemon=True)
         self._reminders: typing.Dict[str, typing.Dict] = {}
-        self._missed: typing.List[typing.Tuple[str, str, str]] = []
+        # (meta, due_datetime) — the whole meta, not a rendered label: the
+        # action lives in it, and the old 3-tuple threw it away before anything
+        # could run it.
+        self._missed: typing.List[typing.Tuple[typing.Dict, datetime]] = []
         self._load_and_restore()
         self._sched.start()
         if self._missed:
@@ -136,14 +145,14 @@ class Scheduler:
             def _fire_missed():
                 import time
                 time.sleep(2.0)
-                for reminder_id, text, due_str in missed:
-                    self._fire_reminder(reminder_id, text, missed_at=due_str)
+                for meta, due in missed:
+                    self._fire_missed_reminder(meta, due)
             threading.Thread(target=_fire_missed, daemon=True, name="scheduler-missed").start()
 
     def reminders_snapshot(self) -> typing.Dict[str, typing.Any]:
         """Scheduled timers as data, for the reminders panel.
 
-        Not a job: list_reminders writes a sentence per timer, and a countdown
+        Not a job: manage_reminders writes a sentence per timer, and a countdown
         that ticks needs the fire time as a number.
         """
         rows = []
@@ -174,15 +183,13 @@ class Scheduler:
 
         A timer can announce a message, run another job, or both.
 
-          "in 30 minutes pause the music") — put the job in action_job and its arguments
-          in action_args
-        - Set a recurring alarm ("every weekday at 9am say good morning")
-
-        Examples for 'when': "in 10 seconds", "in 30 minutes", "at 3pm", "tomorrow at 9am",
-        "every day at 8am", "every weekday at 9am", "every Monday at 10am", "every 2 hours"
-
         Args:
-            when (str): When to fire. Natural language accepted. (required)
+            when (str): When to fire. Natural language, one of these shapes:
+                        "in 10 seconds" / "in 30 minutes", a clock time like "at 3pm"
+                        or "tomorrow at 9am", a daily or weekly alarm like
+                        "every day at 8am" / "every weekday at 9am" /
+                        "every Monday at 10am", or a repeat like "every 2 hours".
+                        (required)
             text (str): Message to announce when it fires. Optional if action_job is set.
             action_job (str): Name of another job to run when it fires (e.g. "control_home_device",
                               "play_songs"). Use the job's exact registered name. Optional.
@@ -213,7 +220,7 @@ class Scheduler:
             jobs = ServiceRegistry.get_all_jobs()
             resolved = _resolve_job_name(action_job, jobs)
             if resolved is None:
-                return f"Error: Unknown action job '{action_job}'. Check available jobs with 'help'."
+                return f"Error: Unknown action job '{action_job}'. Ask what Wony can do to see them."
             action = {"job": resolved, "args": action_args}
 
         trigger_type, trigger_kw, error = _parse_trigger(when)
@@ -271,14 +278,43 @@ class Scheduler:
         return f"{kind} set: {_label(meta)} — {trigger_display} (id: {reminder_id})"
 
     @capture_response
-    @method_job
-    def list_reminders(self) -> str:
+    @method_job(confirms={"edit", "cancel", "delete", "remove", "stop"})
+    def manage_reminders(
+        self,
+        action: str = "list",
+        id_or_text: str = "",
+        new_when: str = "",
+        new_text: str = "",
+        new_action_job: str = "",
+        new_action_args: typing.Optional[dict] = None,
+    ) -> str:
         """
-        [TIMER JOB] Lists every running timer, alarm and reminder.
+        [TIMER JOB] Lists the running timers, alarms and reminders, changes one, or
+        cancels one. Use this for "how long is left", "make it 10 minutes instead" and
+        "forget that timer". Setting a new one is add_reminder.
+
+        Args:
+            action (str): "list" (the default), "edit" or "cancel".
+            id_or_text (str): Which timer — its 8-character id, part of its message,
+                or "all" to cancel everything. (required for edit and cancel)
+            new_when (str): New schedule, e.g. "tomorrow at 9am", "every day at 8am".
+            new_text (str): New message to announce.
+            new_action_job (str): New job to run when it fires.
+            new_action_args (dict): Keyword arguments for new_action_job.
 
         Returns:
-            str: All active timers with their schedule, or a message if none.
+            str: The list of timers, or confirmation of the change.
         """
+        wanted = (action or "list").strip().lower()
+        if wanted in ("edit", "change", "update"):
+            return self._edit_reminder(
+                id_or_text, new_when, new_text, new_action_job, new_action_args
+            )
+        if wanted in ("cancel", "delete", "remove", "stop"):
+            return self._cancel_reminder(id_or_text)
+        if wanted not in ("list", "show"):
+            return f"Unknown action '{action}'. Use list, edit or cancel."
+
         jobs = self._sched.get_jobs()
         if not jobs:
             return "Nothing scheduled."
@@ -298,23 +334,8 @@ class Scheduler:
             lines.append(f"  [{job.id}] {_label(meta)} — next: {next_str}{recurrence}")
         return "\n".join(lines)
 
-    @capture_response
-    @method_job
-    def edit_reminder(self, id_or_text: str = "", new_when: str = "", new_text: str = "",
-                      new_action_job: str = "", new_action_args: typing.Optional[dict] = None) -> str:
-        """
-        [TIMER JOB] Edits a timer, alarm or reminder — its time, message, action, or any combination.
-
-        Args:
-            id_or_text (str): The reminder id (8-char code) or part of the reminder text. (required)
-            new_when (str): New schedule (e.g. "tomorrow at 9am", "every day at 8am"). Optional.
-            new_text (str): New reminder message. Optional.
-            new_action_job (str): New job to run on fire (e.g. "play_songs"). Optional.
-            new_action_args (dict): New kwargs for new_action_job. Optional.
-
-        Returns:
-            str: Confirmation with new schedule, or error if not found.
-        """
+    def _edit_reminder(self, id_or_text: str = "", new_when: str = "", new_text: str = "",
+                       new_action_job: str = "", new_action_args: typing.Optional[dict] = None) -> str:
         if not id_or_text:
             return "Error: Provide reminder id or text to identify it."
         if not new_when and not new_text and not new_action_job:
@@ -411,19 +432,7 @@ class Scheduler:
 
         return f"[{rid}] updated: {_label(new_meta)} — {trigger_display}"
 
-    @capture_response
-    @method_job
-    def cancel_reminder(self, id_or_text: str = "") -> str:
-        """
-        [TIMER JOB] Cancels a timer, alarm or reminder by id, partial text, or all at once.
-
-        Args:
-            id_or_text (str): The id (8-char code), part of the text, or "all" to cancel
-                              everything. (required)
-
-        Returns:
-            str: Confirmation of cancellation, or error if not found.
-        """
+    def _cancel_reminder(self, id_or_text: str = "") -> str:
         if not id_or_text:
             return "Error: Provide an id, some of the text, or 'all'."
 
@@ -460,28 +469,55 @@ class Scheduler:
 
     # ------------------------------------------------------------------ internal
 
-    def _fire_reminder(self, reminder_id: str, text: str, missed_at: str = "") -> None:
+    def _fire_reminder(self, reminder_id: str, text: str) -> None:
         meta = self._reminders.get(reminder_id, {})
         action = meta.get("action")
-        if missed_at:
-            # text here is already a _label() built at restore time.
-            msg = f"Reminder (missed, was due {missed_at}): {text}"
+        if text:
+            msg = f"Reminder: {text}"
+            notify(msg, kind="reminder", source="scheduler")
+            logger.log_system_event("reminder_fired", msg)
+        if action:
+            self._run_action(action)
+        if meta.get("trigger_type") == "date":
+            self._forget_reminder(reminder_id)
+
+    def _fire_missed_reminder(self, meta: typing.Dict, due: datetime) -> None:
+        """Announce a timer that came due while Wony was not running.
+
+        A recent one still runs its action; a stale one only asks, because
+        silently running "lights off" ten hours late is worse than dropping it.
+        """
+        reminder_id = meta.get("id", "")
+        due_str = due.strftime("%H:%M %d %b")
+        action = meta.get("action")
+        late_minutes = (datetime.now() - due).total_seconds() / 60
+
+        if action and late_minutes <= _MISSED_ACTION_GRACE_MINUTES:
+            msg = f"Reminder (missed, was due {due_str}): {_label(meta)}"
             notify(msg, kind="reminder", source="scheduler")
             logger.log_system_event("reminder_fired_missed", msg)
+            self._run_action(action)
+        elif action:
+            msg = (
+                f"I missed {_label(meta)} — it was due at {due_str}. "
+                "Want me to do it now?"
+            )
+            notify(msg, kind="reminder", source="scheduler")
+            logger.log_system_event("reminder_missed_stale", msg)
         else:
-            if text:
-                msg = f"Reminder: {text}"
-                notify(msg, kind="reminder", source="scheduler")
-                logger.log_system_event("reminder_fired", msg)
-            if action:
-                self._run_action(action)
-        if missed_at or meta.get("trigger_type") == "date":
-            self._reminders.pop(reminder_id, None)
-            try:
-                from helpers.memory_db import delete_reminder
-                delete_reminder(reminder_id)
-            except Exception:
-                pass
+            msg = f"Reminder (missed, was due {due_str}): {_label(meta)}"
+            notify(msg, kind="reminder", source="scheduler")
+            logger.log_system_event("reminder_fired_missed", msg)
+
+        self._forget_reminder(reminder_id)
+
+    def _forget_reminder(self, reminder_id: str) -> None:
+        self._reminders.pop(reminder_id, None)
+        try:
+            from helpers.memory_db import delete_reminder
+            delete_reminder(reminder_id)
+        except Exception:
+            pass
 
     def _run_action(self, action: typing.Dict) -> None:
         from helpers.agent import _resolve_job_name
@@ -506,7 +542,7 @@ class Scheduler:
 
     def _load_and_restore(self) -> None:
         try:
-            from helpers.memory_db import all_reminders, delete_reminder
+            from helpers.memory_db import all_reminders
             stored = all_reminders()
         except Exception:
             return
@@ -527,9 +563,11 @@ class Scheduler:
                 if trigger_type == "date":
                     run_date = datetime.fromisoformat(trigger_kw["run_date"])
                     if run_date <= now:
-                        due_str = run_date.strftime("%H:%M %d %b")
-                        self._missed.append((reminder_id, _label(meta), due_str))
-                        delete_reminder(reminder_id)
+                        # Keep the row and the meta until it has actually fired
+                        # — deleting here destroyed the action before anything
+                        # could run it.
+                        self._reminders[reminder_id] = meta
+                        self._missed.append((meta, run_date))
                         continue
                     self._sched.add_job(
                         _make_fire(), "date", run_date=run_date,

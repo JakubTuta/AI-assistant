@@ -27,12 +27,21 @@ class ServiceRegistry:
     _module_hints: typing.Dict[str, str] = {}
     _job_modules: typing.Dict[str, str] = {}
     _job_summaries: typing.Dict[str, str] = {}
+    # Jobs that change something the user cares about. Declared at the job, not
+    # in a hand-kept list of bare strings somewhere else that nothing validates.
+    # Deliberately absent from the tool schema: it would cost tokens on every
+    # request and models are unreliable at self-restraint. It is read on the
+    # execution side instead — see helpers/confirm.py and helpers/web_app.py.
+    # True for every call, or a collection of `action` argument values that
+    # need confirming — a merged job whose default action only reads must not
+    # make the user confirm a question.
+    _job_confirms: typing.Dict[str, typing.Any] = {}
     # Declared requirement per module, recorded whatever the outcome — this is
     # what `doctor` reports against, so it must not be a second hand-kept list.
     _module_requirements: typing.Dict[str, typing.Any] = {}
     # Stores enough info to retry failed modules at runtime.
     # service: {"kind": "service", "cls": type, "requires": Requirement|None}
-    # jobs:    {"kind": "jobs", "items": [(job_name, func, requires, summary), ...]}
+    # jobs:    {"kind": "jobs", "items": [(job_name, func, requires, summary, confirms), ...]}
     _reinit_pending: typing.Dict[str, typing.Dict] = {}
 
     @classmethod
@@ -60,6 +69,14 @@ class ServiceRegistry:
         return cls._job_summaries.copy()
 
     @classmethod
+    def get_job_confirms(cls) -> typing.Dict[str, typing.Any]:
+        return cls._job_confirms.copy()
+
+    @classmethod
+    def job_confirms(cls, job_name: str) -> bool:
+        return bool(cls._job_confirms.get(job_name))
+
+    @classmethod
     def get_module_requirements(cls) -> typing.Dict[str, typing.Any]:
         return cls._module_requirements.copy()
 
@@ -76,7 +93,14 @@ class ServiceRegistry:
         retryable = []
         for name in cls._reinit_pending:
             status, _ = cls._module_status.get(name, (None, ""))
-            if status in (ModuleStatus.ERROR, ModuleStatus.MISCONFIGURED):
+            # UNAVAILABLE belongs here too: "pip install -r requirements/web.txt"
+            # is the single most common fix, and leaving it out meant the module
+            # stayed off until the whole app was restarted.
+            if status in (
+                ModuleStatus.ERROR,
+                ModuleStatus.MISCONFIGURED,
+                ModuleStatus.UNAVAILABLE,
+            ):
                 retryable.append(name)
         return retryable
 
@@ -133,6 +157,7 @@ class ServiceRegistry:
                             cls._job_modules[job_name] = module_name
                             explicit_summary = getattr(attr, "_job_summary", "")
                             cls._job_summaries[job_name] = explicit_summary or cls._extract_summary(attr)
+                            cls._job_confirms[job_name] = getattr(attr, "_job_confirms", False)
 
                     cls._module_status[module_name] = (ModuleStatus.ENABLED, "")
                     cls._reinit_pending.pop(module_name, None)
@@ -151,17 +176,18 @@ class ServiceRegistry:
     def _reinitialize_jobs_kind(cls, module_name: str, pending: typing.Dict) -> bool:
         items = pending["items"]
         registered = []
-        for job_name, func, requires, summary in items:
+        for job_name, func, requires, summary, confirms in items:
             ready, reason = cls._check_requirements(requires)
             if not ready:
                 cls._module_status[module_name] = (cls._status_for_reason(reason), reason)
                 return False
-            registered.append((job_name, func, summary))
+            registered.append((job_name, func, summary, confirms))
 
-        for job_name, func, summary in registered:
+        for job_name, func, summary, confirms in registered:
             cls._jobs[job_name] = func
             cls._job_modules[job_name] = module_name
             cls._job_summaries[job_name] = summary or cls._extract_summary(func)
+            cls._job_confirms[job_name] = confirms
 
         cls._module_status[module_name] = (ModuleStatus.ENABLED, "")
         cls._reinit_pending.pop(module_name, None)
@@ -222,6 +248,7 @@ class ServiceRegistry:
         module_name: typing.Optional[str] = None,
         requires: typing.Any = None,
         summary: str = "",
+        confirms: typing.Any = False,
     ):
         """
         Decorator to register a standalone job function.
@@ -262,13 +289,15 @@ class ServiceRegistry:
                         module_name, {"kind": "jobs", "items": []}
                     )
                     entry["items"].append(
-                        (job_name, func, requires, summary or cls._extract_summary(func))
+                        (job_name, func, requires,
+                         summary or cls._extract_summary(func), confirms)
                     )
                 return func
 
             cls._jobs[job_name] = func
             cls._job_modules[job_name] = module_name or ""
             cls._job_summaries[job_name] = summary or cls._extract_summary(func)
+            cls._job_confirms[job_name] = confirms
             if module_name and module_name not in cls._module_status:
                 cls._module_status[module_name] = (ModuleStatus.ENABLED, "")
             return func
@@ -337,6 +366,9 @@ class ServiceRegistry:
                         cls._job_summaries[job_name] = (
                             explicit_summary or cls._extract_summary(attr)
                         )
+                        cls._job_confirms[job_name] = getattr(
+                            attr, "_job_confirms", False
+                        )
 
                 cls._module_status[svc_module_name] = (ModuleStatus.ENABLED, "")
 
@@ -357,7 +389,11 @@ class ServiceRegistry:
 
     @classmethod
     def method_job(
-        cls, name_or_method: typing.Union[str, typing.Callable, None] = None, *, summary: str = ""
+        cls,
+        name_or_method: typing.Union[str, typing.Callable, None] = None,
+        *,
+        summary: str = "",
+        confirms: typing.Any = False,
     ):
         """
         Decorator to mark service methods as jobs.
@@ -379,6 +415,7 @@ class ServiceRegistry:
             method._is_job_method = True
             method._job_name = method_name
             method._job_summary = summary
+            method._job_confirms = confirms
             return method
 
         if callable(name_or_method):

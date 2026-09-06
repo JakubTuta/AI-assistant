@@ -18,34 +18,6 @@ from pydantic import BaseModel
 from helpers.config import Config
 from helpers.registry import ServiceRegistry
 
-# Jobs the web UI flags before invoking. Not a config key — a user editing this
-# list is a code change, not a setting.
-_DESTRUCTIVE_JOBS: typing.Set[str] = {
-    "exit",
-    "power_device",
-    # Reversible, but it blanks the display: worth a confirmation, because if
-    # the touchscreen does not wake it the way back is an SSH session.
-    "sleep_device",
-    "background_jobs",
-    "send_email",
-    "reply_to_email",
-    "mark_as_read",
-    "delete_email",
-    "manage_drafts",
-    "create_event",
-    "edit_event",
-    "delete_event",
-    "cancel_reminder",
-    "edit_reminder",
-    "remove_google_account",
-    "edit_google_account",
-    # Discards the stored token before re-running consent: an interrupted
-    # sign-in leaves the account worse off than it started.
-    "authorize_google_account",
-    "manage_mcp_server",
-    "wipe_data",
-}
-
 
 def _coerce_args(
     func: typing.Callable,
@@ -253,7 +225,7 @@ def build_app() -> FastAPI:
         all_jobs = ServiceRegistry.get_all_jobs()
         job_modules = ServiceRegistry.get_job_modules()
         job_summaries = ServiceRegistry.get_job_summaries()
-        destructive = _DESTRUCTIVE_JOBS
+        destructive = ServiceRegistry.get_job_confirms()
 
         jobs_out = []
         for name, func in all_jobs.items():
@@ -268,7 +240,7 @@ def build_app() -> FastAPI:
                     "module": job_modules.get(name, ""),
                     "summary": job_summaries.get(name, ""),
                     "description": description,
-                    "destructive": name in destructive,
+                    "destructive": bool(destructive.get(name)),
                     "parameters": {
                         "properties": properties,
                         "required": required,
@@ -294,6 +266,13 @@ def build_app() -> FastAPI:
                 status_code=422, detail=f"Argument coercion failed: {e}"
             )
 
+        if ServiceRegistry.job_confirms(req.name):
+            # Deliberately not routed through helpers/confirm.py: the tap
+            # already passed the UI's confirm dialog and the user is watching
+            # the result. Logged separately so the audit trail says which of
+            # these ran from a button rather than from the model.
+            logger.log_system_event("web_invoke_confirmed", req.name)
+
         logger.log_function_call(req.name, "[web]", coerced)
         try:
             # Same lock every agent turn takes — a button press reaches the same
@@ -317,6 +296,7 @@ def build_app() -> FastAPI:
     @app.post("/api/chat")
     def chat(req: ChatRequest) -> typing.Dict[str, typing.Any]:
         from helpers.conversation import Conversation
+        from helpers.logger import logger
         from helpers.turn import run_turn
 
         if not req.message or not req.message.strip():
@@ -324,6 +304,7 @@ def build_app() -> FastAPI:
 
         result = run_turn(req.message)
         if result.error is not None:
+            logger.log_error(result.error, "web_chat")
             raise HTTPException(status_code=503, detail=result.error)
 
         safe_calls = _sanitize_calls(result.calls)
@@ -560,11 +541,13 @@ def build_app() -> FastAPI:
 
         def _run() -> None:
             from helpers.conversation import Conversation
+            from helpers.logger import logger
             from helpers.turn import run_turn
 
             try:
                 result = run_turn(message, on_text=lambda c: q.put(("delta", c)))
-                if result.error is not None:
+                if result.error:
+                    logger.log_error(result.error, "ws_chat")
                     q.put(("error", result.error))
                     return
 
@@ -578,6 +561,9 @@ def build_app() -> FastAPI:
                     "calls": safe_calls,
                     "ts": _dt.now().isoformat(timespec="seconds"),
                 }))
+            except Exception as e:
+                logger.log_error(str(e), "ws_chat")
+                q.put(("error", str(e)))
             finally:
                 q.put(None)
 

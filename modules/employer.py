@@ -82,48 +82,22 @@ class Employer:
         Conversation.record_turn(user_input, result.text, calls=result.calls)
         return result.text
 
-    @register_job
-    @capture_response
-    @staticmethod
-    def help() -> str:
-        """
-        [SYSTEM INFORMATION JOB] Lists every command available right now, grouped by
-        module. Only shows what is actually registered and working.
+        # A failed turn is not part of the conversation; a timed-out one is,
+        # because a tool did run and its result is what we just said.
+        if result.error:
+            return result.text
 
-        Returns:
-            str: Commands grouped by module with descriptions.
-        """
-        job_modules = ServiceRegistry.get_job_modules()
-        job_summaries = ServiceRegistry.get_job_summaries()
-        all_jobs = ServiceRegistry.get_all_jobs()
+        Conversation.record_turn(user_input, result.text, calls=result.calls)
+        return result.text
 
-        # Group by module
-        grouped: typing.Dict[str, typing.List[typing.Tuple[str, str]]] = {}
-        for job_name in all_jobs:
-            module = job_modules.get(job_name, "general")
-            summary = job_summaries.get(job_name, "")
-            grouped.setdefault(module, []).append((job_name, summary))
-
-        lines = ["Available commands:"]
-        for module in sorted(grouped.keys()):
-            lines.append(f"\n  [{module or 'general'}]")
-            for name, summary in sorted(grouped[module]):
-                display = name.replace("_", " ")
-                if summary:
-                    lines.append(f"    {display} — {summary}")
-                else:
-                    lines.append(f"    {display}")
-
-        return "\n".join(lines)
-
-    @register_job
+    @register_job(module_name="employer", confirms={"stop", "cancel", "stop all"})
     @capture_response
     @staticmethod
     def background_jobs(action: str = "list") -> str:
         """
         [SYSTEM CONTROL JOB] Lists what is running in the background — inbox and
         calendar watchers and the like — or stops all of it. This is not about timers
-        and reminders: those are list_reminders and cancel_reminder.
+        and reminders: those are add_reminder and manage_reminders.
 
         Args:
             action (str): "list" (the default) or "stop".
@@ -147,7 +121,7 @@ class Employer:
             return f"Active background jobs: {', '.join(running)}."
         return "No background jobs are currently running."
 
-    @register_job
+    @register_job(module_name="employer", confirms=True)
     @staticmethod
     def exit() -> None:
         """

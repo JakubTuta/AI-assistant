@@ -9,6 +9,11 @@ assistant:
   personality: "Friendly and concise."
   # Language for AI responses. BCP-47 codes, e.g. "en", "pl".
   language: "en"
+  proactive:
+    # Let Wony start a conversation on its own — a drive nearly full, the
+    # device running hot, a meeting about to start, important mail. Off by
+    # default; ask "what do you watch for" to see the list and switch one off.
+    enabled: false
 
 ai:
   # Options: anthropic | gemini | ollama | null (auto-detect from .env keys).
@@ -25,13 +30,15 @@ ai:
     max_turns: 5   # how many past exchanges Wony remembers within a session
 
 # Only listed modules load. A module still won't run if credentials/deps are missing.
-# Run "check setup" to see what each broken module needs.
+# Ask Wony "check my setup" to see what each broken module needs.
+# Conversation, module health and the agent loop itself are always on and are
+# not listed here.
 enabled_modules:
-  - ai             # always-on: conversation, history, AI provider routing
-  - status         # always-on: module health and setup diagnostics
   - basics         # time, date, power off/restart, daily briefing
   - scheduler      # timers, alarms and reminders; can run another job when they fire
+  - notes          # shopping / todo lists kept in wony.db
   - weather        # current weather and forecasts
+  # - system         # disk space, memory, processor load, network (pip install -r requirements/system.txt)
   # - spotify        # playback control (play, pause, skip, search, volume)
   # - gmail          # read, search, and monitor Gmail (requires Google OAuth)
   # - calendar       # read Google Calendar events and check availability (requires Google OAuth)
@@ -55,8 +62,9 @@ modules:
   weather:
     default_units: "metric"   # metric | imperial
   gmail:
-    # Safety gate — set to true to allow sending, replying, and deleting mail.
-    # Off, Wony saves a draft in Gmail for you to send yourself.
+    # Safety gate — set to true to let Wony send, reply, delete and mark mail
+    # as read. While false it saves everything as a draft for you to send
+    # yourself.
     allow_write: false
     # Set to true to have AI summarize email lists (sends content to your AI provider).
     use_ai: false
@@ -66,6 +74,11 @@ modules:
     # Safety gate — set to true to allow creating, editing, and deleting events.
     # Note: requires re-authentication after upgrading from the old readonly scope.
     allow_write: false
+  mcp:
+    # Safety gate — an MCP server is a program Wony starts on this device with
+    # your privileges. While false, adding/editing/connecting one tells you the
+    # command instead of running it.
+    allow_install: false
 
 # The buttons on the home screen. Leave this out and Wony picks a sensible set
 # based on which modules you enabled above.

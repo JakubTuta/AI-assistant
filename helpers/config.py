@@ -7,12 +7,26 @@ from pydantic_settings.sources import YamlConfigSettingsSource
 
 _MISSING = object()
 
+# Modules that are not a user choice: without them there is no conversation, no
+# way to see what is broken, and no agent loop at all. They are never listed in
+# enabled_modules and never appear on the settings page — before this they only
+# stayed on because their jobs passed module_name=None, which left them with a
+# blank badge in the UI and in `what can you do`.
+ALWAYS_ON = ("ai", "status", "employer")
+
+
+class ProactiveSettings(BaseModel):
+    # Ships off: an assistant that starts talking on its own has to be asked
+    # for. See helpers/triggers.py for what it would watch.
+    enabled: bool = False
+
 
 class AssistantSettings(BaseModel):
     name: str = "Wony"
     owner_name: str = "User"
     personality: str = "Friendly and concise."
     language: str = "en"
+    proactive: ProactiveSettings = Field(default_factory=ProactiveSettings)
 
 
 class TileSettings(BaseModel):
@@ -95,6 +109,10 @@ class CalendarSettings(BaseModel):
     allow_write: bool = False
 
 
+class McpSettings(BaseModel):
+    allow_install: bool = False
+
+
 class ModulesSettings(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -103,6 +121,7 @@ class ModulesSettings(BaseModel):
     weather: WeatherSettings = Field(default_factory=WeatherSettings)
     gmail: GmailSettings = Field(default_factory=GmailSettings)
     calendar: CalendarSettings = Field(default_factory=CalendarSettings)
+    mcp: McpSettings = Field(default_factory=McpSettings)
 
 
 class AppSettings(BaseSettings):
@@ -119,7 +138,7 @@ class AppSettings(BaseSettings):
     assistant: AssistantSettings = Field(default_factory=AssistantSettings)
     ai: AiSettings = Field(default_factory=AiSettings)
     enabled_modules: list[str] = Field(
-        default_factory=lambda: ["ai", "status", "basics", "scheduler", "weather"]
+        default_factory=lambda: ["basics", "scheduler", "weather"]
     )
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
     # Empty list = fall back to the built-in manifest (helpers/kiosk.py).
@@ -203,7 +222,7 @@ class Config:
 
     @classmethod
     def is_module_enabled(cls, module_name: str) -> bool:
-        if module_name in ("ai", "status"):
+        if module_name in ALWAYS_ON:
             return True
         return module_name in cls.enabled_modules()
 

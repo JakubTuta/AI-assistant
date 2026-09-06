@@ -214,7 +214,7 @@ def store_doc(path: str, text: str) -> int:
     """Embed a document as overlapping chunks and persist them.
 
     Returns the number of chunks queued. Embedding itself runs on a daemon
-    thread so index_document answers immediately on a large file.
+    thread so manage_documents answers immediately on a large file.
     """
     chunks = chunk_text(text)[:_MAX_DOC_CHUNKS]
 

@@ -11,7 +11,7 @@ import os
 import typing
 
 from helpers import config_writer
-from helpers.config import Config
+from helpers.config import ALWAYS_ON, Config
 from helpers.paths import repo_path
 
 CONFIG_FILE = repo_path("config.yaml")
@@ -21,8 +21,10 @@ CONFIG_FILE = repo_path("config.yaml")
 MODULES: typing.List[typing.Tuple[str, str, str]] = [
     ("basics", "Everyday basics", "Time, date, daily briefing, power off this device."),
     ("scheduler", "Timers & reminders", "Timers and alarms that survive a restart."),
-    ("weather", "Weather", "Current conditions for here or any city."),
+    ("notes", "Lists", "Shopping and todo lists you can add to by asking."),
+    ("weather", "Weather", "Now and the next few days, here or any city."),
     ("web", "Web search", "Search the web and read pages."),
+    ("system", "Device health", "Disk space, memory, processor load and network."),
     ("spotify", "Spotify", "Play, pause, skip, search, volume."),
     ("gmail", "Gmail", "Read, search and watch your inbox."),
     ("calendar", "Google Calendar", "Events, availability and free slots."),
@@ -66,7 +68,8 @@ _FIELDS: typing.List[typing.Tuple[str, typing.List[Field]]] = [
               minimum=1, maximum=50, step=1),
     ]),
     ("What Wony may do on its own", [
-        Field("modules.gmail.allow_write", "Send and delete email", "toggle",
+        Field("modules.gmail.allow_write", "Change my mailbox", "toggle",
+              "Send, reply, delete, and mark mail as read. "
               "Off: emails are saved as drafts for you to send yourself.",
               module="gmail"),
         Field("modules.calendar.allow_write", "Change my calendar", "toggle",
@@ -78,6 +81,15 @@ _FIELDS: typing.List[typing.Tuple[str, typing.List[Field]]] = [
         Field("modules.basics.allow_power_off", "Power off this device", "toggle",
               "Off: it refuses to shut down or restart the Pi.",
               module="basics"),
+        Field("modules.mcp.allow_install", "Install MCP tool servers", "toggle",
+              "Off: it tells you the command instead of running it. "
+              "An MCP server is a program that runs on this device.",
+              module="mcp"),
+        Field("assistant.proactive.enabled", "Speak up on its own", "toggle",
+              "Off: Wony only answers. On: it can start a conversation about a "
+              "full disk, the device running hot, a meeting about to start or "
+              "important mail. Ask 'what do you watch for' to see the full list.",
+              restart=True),
         Field("modules.gmail.use_ai", "Summarise email with AI", "toggle",
               "Sends the text of your emails to your AI provider.", module="gmail"),
     ]),
@@ -233,9 +245,10 @@ def apply(
         unknown = [name for name in modules if name not in known]
         if unknown:
             raise SettingsError(f"Unknown module(s): {', '.join(unknown)}.")
-        # ai and status are always on; the registry treats them as such and the
-        # app has nothing to say without them.
-        to_write["enabled_modules"] = ["ai", "status"] + [
+        # The always-on modules are not a user choice; the registry treats them
+        # as enabled whatever the file says, and the app has nothing to say
+        # without them.
+        to_write["enabled_modules"] = list(ALWAYS_ON) + [
             key for key, _, _ in MODULES if key in set(modules)
         ]
         restart = True

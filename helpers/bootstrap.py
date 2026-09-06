@@ -175,6 +175,7 @@ def bootstrap(
     _warn_if_web_exposed(Config)
     _reconnect_mcp_servers(Config, quiet)
     _start_health_watcher(quiet)
+    _start_triggers(quiet)
 
     if not quiet:
         print()
@@ -231,3 +232,15 @@ def _start_health_watcher(quiet: bool) -> None:
             )
     except Exception:
         pass
+
+
+def _start_triggers(quiet: bool) -> None:
+    """Start the proactive watcher. No-op unless assistant.proactive.enabled."""
+    try:
+        from helpers import triggers
+
+        if triggers.start() and not quiet:
+            print("[triggers] Watching for things worth mentioning.")
+    except Exception:
+        pass
+

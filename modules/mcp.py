@@ -1,4 +1,4 @@
-﻿"""
+"""
 MCP server management jobs.
 
 State is persisted in the mcp_servers table in wony.db; tool wrappers are
@@ -26,6 +26,39 @@ def _tool_summary(name: str) -> str:
     tools = _client().get_session(name).list_tools()
     listed = ", ".join(t["name"] for t in tools[:5])
     return f"{len(tools)} tool(s): {listed}{'…' if len(tools) > 5 else ''}"
+
+
+def _install_allowed() -> bool:
+    from helpers.config import Config
+
+    return bool(Config.module_settings("mcp").get("allow_install", False))
+
+
+def _spawn_summary(transport: str, command: str, args: str, url: str) -> str:
+    """The command line (or address) a connect would actually use."""
+    if (transport or "stdio") != "stdio":
+        return url or "(no url)"
+    try:
+        parsed = json.loads(args or "[]")
+    except (json.JSONDecodeError, ValueError):
+        parsed = []
+    parts = [command or "(no command)"] + [str(a) for a in parsed]
+    return " ".join(parts)
+
+
+def _install_refusal(action: str, what: str) -> str:
+    """What the gate says instead of spawning the server.
+
+    Adding, editing or connecting an MCP server starts a process of the user's
+    choosing with the user's privileges, so it is gated like every other action
+    that changes something outside Wony. Echoing the command back means the
+    answer is still useful: the user can read it and run it themselves.
+    """
+    return (
+        f"MCP server '{action}' is disabled — it would have started: {what}\n"
+        "To allow it, set modules.mcp.allow_install: true in config.yaml "
+        "(or switch it on in the web UI under Settings)."
+    )
 
 
 def _valid_json(value: str, shape: type) -> bool:
@@ -75,12 +108,13 @@ def list_mcp_servers() -> str:
     module_name="mcp",
     requires=_MCP_REQUIREMENT,
     summary="Add, edit, remove, connect or disconnect an MCP server",
+    confirms=True,
 )
 @capture_response
 def manage_mcp_server(
     action: str = "add",
     name: str = "",
-    transport: str = "stdio",
+    transport: str = "",
     command: str = "",
     url: str = "",
     args: str = "",
@@ -95,7 +129,7 @@ def manage_mcp_server(
     Args:
         action (str): "add" (the default), "edit", "remove", "connect" or "disconnect".
         name (str): The server name, e.g. "notion", "github". (required)
-        transport (str): "stdio" (the default) or "sse"/"http".
+        transport (str): "stdio" (the default), "sse" or "http".
         command (str): Executable command for stdio transport, e.g. "npx @notionhq/mcp".
         args (str): JSON array of command arguments, e.g. '["--token", "xyz"]'.
         url (str): Base URL for sse/http transport.
@@ -122,9 +156,11 @@ def manage_mcp_server(
     if wanted == "add":
         if record:
             return f"Server '{name}' already exists. Use action 'edit' to change it."
+        if not _install_allowed():
+            return _install_refusal("add", _spawn_summary(transport, command, args, url))
         upsert_mcp_server({
             "name": name,
-            "transport": transport,
+            "transport": transport or "stdio",
             "command": command or None,
             "args": args or "[]",
             "env": env or "{}",
@@ -142,7 +178,21 @@ def manage_mcp_server(
         return f"No server named '{name}'. Use action 'add' to create it."
 
     if wanted == "edit":
-        if transport and transport != "stdio":
+        # Editing what a server runs, or switching a server back on, both end in
+        # a spawned process — the same thing 'add' is gated for. Turning a server
+        # off is the safe direction and stays ungated.
+        enabling = enabled.strip().lower() in ("true", "1", "yes")
+        if (command or args or env or url or enabling) and not _install_allowed():
+            return _install_refusal(
+                "edit",
+                _spawn_summary(
+                    transport or record.get("transport", "stdio"),
+                    command or record.get("command") or "",
+                    args or record.get("args") or "",
+                    url or record.get("url") or "",
+                ),
+            )
+        if transport:
             record["transport"] = transport
         if command:
             record["command"] = command
@@ -167,6 +217,16 @@ def manage_mcp_server(
     if wanted == "connect":
         if name in connected:
             return f"Server '{name}' is already connected."
+        if not _install_allowed():
+            return _install_refusal(
+                "connect",
+                _spawn_summary(
+                    record.get("transport", "stdio"),
+                    record.get("command") or "",
+                    record.get("args") or "",
+                    record.get("url") or "",
+                ),
+            )
         try:
             _client().connect_server(record)
         except Exception as exc:

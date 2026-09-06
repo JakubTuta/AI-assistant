@@ -2,9 +2,7 @@ import os
 import platform
 import shutil
 
-from helpers.decorators import capture_response
 from helpers.paths import repo_path
-from helpers.registry import register_job
 from helpers.requirements import Requirement, evaluate
 
 _NON_MODULE_CHECKS = [
@@ -204,18 +202,3 @@ def _disk_line() -> str:
             f"{_MIN_FREE_DISK_MB} MB)."
         )
     return f"    ✓ {free_mb} MB free disk."
-
-
-@register_job
-@capture_response
-def check_setup() -> str:
-    """
-    [SYSTEM DIAGNOSTICS JOB] Validates the full assistant setup and prints a ✓/✗ checklist.
-    Checks .env, config.yaml, AI provider, each integration's requirements, and
-    whether the device has the architecture, memory and disk space Wony needs.
-    Prints exactly what to fix for anything that is missing or broken.
-
-    Returns:
-        str: Full diagnostics report with ✓/✗ per component and fix instructions.
-    """
-    return run_doctor()

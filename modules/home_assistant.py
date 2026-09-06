@@ -68,6 +68,12 @@ _DETAIL_DEVICES = 5
 # The service registry only changes when an integration is added or removed.
 _SERVICES_TTL = 300.0
 
+# The entity index carries live states, so this window only exists to stop one
+# request rendering the whole state machine several times over. Seconds, not
+# minutes — anything longer would report a brightness the user has since changed.
+_INDEX_TTL = 10.0
+_INDEX_TIMEOUT = (3.0, 15.0)
+
 _GENERIC_ACTIONS = {"on": "turn_on", "off": "turn_off", "toggle": "toggle"}
 
 # Domains whose services are not turn_on/turn_off/toggle, or that have useful
@@ -300,14 +306,45 @@ def _failure(exc: Exception, where: str) -> str:
 # ── index + matching ──────────────────────────────────────────────────────────
 
 
+@dataclass
+class _IndexCache:
+    stamp: float = 0.0
+    entities: typing.List["_Entity"] = field(default_factory=list)
+
+
+_index = _IndexCache()
+
+
 def _fetch_index() -> typing.List[_Entity]:
+    """Every visible entity with its current state.
+
+    Cached, but only for seconds: one request can render this three times (find
+    the device, act, read the result back), and the template renders the whole
+    state machine each time. It carries live values — a light's brightness, a
+    lock's state — so the window has to stay short enough that nothing read
+    from it is stale, and a service call drops it outright.
+    """
+    if _index.entities and time.monotonic() - _index.stamp < _INDEX_TTL:
+        return _index.entities
+
     response = net.post(
         f"{_base_url()}/api/template",
         headers=_headers(),
         json={"template": _INDEX_TEMPLATE},
+        # Rendering every entity is the heaviest call this module makes, and
+        # the shared 8s read timeout failed it on a busy install while the
+        # trivial service call had already been given 15s.
+        timeout=_INDEX_TIMEOUT,
     )
     response.raise_for_status()
-    return _parse_index(response.text)
+    _index.entities = _parse_index(response.text)
+    _index.stamp = time.monotonic()
+    return _index.entities
+
+
+def _invalidate_index() -> None:
+    """After something changes, the cached states are wrong by definition."""
+    _index.entities = []
 
 
 def _parse_index(text: str) -> typing.List[_Entity]:
@@ -448,7 +485,7 @@ def list_home_devices(query: str = "", area: str = "", domain: str = "") -> str:
     return _describe(_with_siblings(found, entities, query))
 
 
-@register_job(module_name="home_assistant", requires=_requirement())
+@register_job(module_name="home_assistant", requires=_requirement(), confirms=True)
 @capture_response
 def control_home_device(
     target: str = "",
@@ -808,6 +845,7 @@ def _call_service(
         timeout=_SERVICE_TIMEOUT,
     )
     response.raise_for_status()
+    _invalidate_index()
 
 
 def _verbs(domain: str) -> typing.List[str]:

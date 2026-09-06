@@ -22,7 +22,7 @@ function countdown(next: string | null): string {
 
 /** Everything counting down, with a button to call one off.
  *
- *  list_reminders says the same thing in a sentence; a sentence has nowhere to
+ *  manage_reminders says the same thing in a sentence; a sentence has nowhere to
  *  put a cancel button, and its countdown is stale the moment it is written.
  */
 export function Reminders() {
@@ -51,7 +51,7 @@ export function Reminders() {
 
   const cancel = async (id: string) => {
     setBusy(id)
-    await invokeJob('cancel_reminder', { id_or_text: id })
+    await invokeJob('manage_reminders', { action: 'cancel', id_or_text: id })
     setBusy(null)
     load()
   }

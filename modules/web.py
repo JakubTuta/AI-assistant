@@ -1,4 +1,4 @@
-﻿import typing
+import typing
 
 from helpers.decorators import capture_response
 from helpers.registry import register_job
@@ -73,7 +73,7 @@ def web_search(query: str) -> str:
     summary="Fetch and read the text content of a URL",
 )
 @capture_response
-def fetch_url(url: str) -> str:
+def fetch_url(url: str, offset: int = 0) -> str:
     """
     [WEB JOB] Fetches the main text content of a web page URL.
     Use this to read a specific article, documentation page, or any URL the user provides.
@@ -81,6 +81,8 @@ def fetch_url(url: str) -> str:
 
     Args:
         url (str): The full URL to fetch (must start with http:// or https://). (required)
+        offset (int): Where to start reading, in characters. Use it to read the
+            rest of a page that was cut short.
 
     Returns:
         str: The main text content of the page, truncated if very long.
@@ -90,7 +92,7 @@ def fetch_url(url: str) -> str:
     if not url.startswith(("http://", "https://")):
         return "Error: URL must start with http:// or https://"
 
-    return _do_fetch(url)
+    return _do_fetch(url, max(0, int(offset or 0)))
 
 
 # ------------------------------------------------------------------ internals
@@ -102,8 +104,13 @@ def _do_search(query: str, max_results: int = 5) -> typing.List[typing.Dict]:
     if tavily_key:
         try:
             return _tavily_search(query, tavily_key, max_results)
-        except Exception:
-            pass
+        except Exception as e:
+            # Falling back to DuckDuckGo is right, but doing it silently meant a
+            # bad TAVILY_API_KEY looked exactly like a working one.
+            import helpers.diagnostics
+            helpers.diagnostics.add(
+                "warning", "Web", f"Tavily search failed, using DuckDuckGo: {e}"
+            )
 
     return _ddg_search(query, max_results)
 
@@ -134,7 +141,7 @@ def _ddg_search(query: str, max_results: int) -> typing.List[typing.Dict]:
     return list(DDGS().text(query, max_results=max_results))
 
 
-def _do_fetch(url: str) -> str:
+def _do_fetch(url: str, offset: int = 0) -> str:
     max_chars = _MAX_CONTENT_CHARS
 
     try:
@@ -147,7 +154,7 @@ def _do_fetch(url: str) -> str:
         response.raise_for_status()
         text = trafilatura.extract(response.text)
         if not text:
-            text = response.text[:max_chars]
+            text = response.text
     except ImportError:
         import httpx
         response = httpx.get(url, timeout=15, follow_redirects=True)
@@ -159,10 +166,16 @@ def _do_fetch(url: str) -> str:
     if not text:
         return f"Could not extract text content from {url}."
 
-    if len(text) > max_chars:
-        text = text[:max_chars] + f"\n\n[Content truncated at {max_chars} chars. Full page is longer.]"
+    if offset >= len(text):
+        return f"{url} has only {len(text)} characters — nothing at offset {offset}."
 
-    return f"Content from {url}:\n\n{text}"
+    page = text[offset:offset + max_chars]
+    end = offset + len(page)
+    suffix = (
+        f"\n\n[Characters {offset}–{end} of {len(text)}. Read on with offset={end}.]"
+        if end < len(text) else ""
+    )
+    return f"Content from {url}:\n\n{page}{suffix}"
 
 
 def _strip_html(html: str) -> str:

@@ -83,6 +83,10 @@ def capture_response(
 
         return str_response
 
+    # Marker for the decorator-order guard in tests/test_tool_schemas.py:
+    # @register_job registers whatever sits directly beneath it, so a job
+    # written the other way round silently loses error capture and logging.
+    wrapper._captures_response = True  # type: ignore[attr-defined]
     return wrapper
 
 

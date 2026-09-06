@@ -79,11 +79,15 @@ below. Some answer on the spot; others open a page:
 | Timers   | Everything counting down, with a button to call one off         |
 | Devices  | Every device you have, by room, one card each, with its controls |
 | Music    | Cover art, play controls and volume                             |
+| Lists    | Your shopping and todo lists, with a tick to cross one off      |
 | Accounts | Add, sign in to and switch Google accounts                      |
 | Sleep    | Sends the screen dark for the night                             |
 
 You can still ask Wony any of this in words — the tiles are the quicker way,
-not the only one.
+not the only one. Things to try: _"what's it doing tomorrow"_, _"set a timer for
+10 minutes"_, _"add milk to my shopping list"_, _"read my last email"_, _"play
+some jazz"_, _"turn off the kitchen light"_, _"remember I prefer metric"_,
+_"what did we talk about on Monday"_.
 
 **Typing.** Tap the box at the bottom to bring up the on-screen keyboard. If you
 plug in a USB or Bluetooth keyboard, just start typing anywhere and Wony picks
@@ -151,13 +155,13 @@ ai:
 
 # Only what is listed here is switched on.
 enabled_modules:
-  - ai
-  - status
   - basics # time, date, daily briefing
   - scheduler # timers, alarms, reminders
+  - notes # shopping and todo lists
   - weather
   - gmail
   - calendar
+  # - system           # disk space, memory, processor load, network
   # - spotify
   # - home_assistant
   # - web              # web search
@@ -176,7 +180,7 @@ kiosk:
 ```
 
 A few things are switched off until you say otherwise, so nothing surprising can
-happen by accident. All four are on the settings screen too:
+happen by accident. All six are on the settings screen too:
 
 | Setting                              | Allows                                                                   |
 | ------------------------------------ | ------------------------------------------------------------------------ |
@@ -184,6 +188,18 @@ happen by accident. All four are on the settings screen too:
 | `modules.gmail.allow_write`          | Sending, replying to and deleting email. Off, Wony saves a draft instead |
 | `modules.calendar.allow_write`       | Creating, changing and deleting events                                   |
 | `modules.home_assistant.allow_locks` | Unlocking doors, opening the garage, disarming alarms                    |
+| `modules.mcp.allow_install`          | Starting an MCP server — a program that runs on this device. Off, Wony tells you the command instead |
+| `assistant.proactive.enabled`        | Speaking up on its own about a drive nearly full, the device running hot, a meeting about to start, or important mail |
+
+With the last one on, Wony says it in its own words rather than a canned alert.
+Ask _"what do you watch for"_ to see the list, or _"stop watching for important
+email"_ to switch one off until the next restart.
+
+Separately from those switches, anything that changes something you care about —
+sending or deleting mail, changing your calendar, cancelling a timer, powering
+the device down — is read back to you first and only happens once you say yes.
+Tapping it on a screen gives you a confirm dialog; asking for it in words means
+Wony tells you what it is about to do and waits for an answer.
 
 ## Connecting your services
 

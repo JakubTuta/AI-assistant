@@ -1,4 +1,4 @@
-﻿"""Structured data for the parts of the UI that are not a conversation.
+"""Structured data for the parts of the UI that are not a conversation.
 
 A job returns a sentence. That is the right answer in chat and the wrong one in
 a panel: you cannot put a switch on a sentence, or a temperature into a gauge.
@@ -60,6 +60,12 @@ def _reminders() -> typing.Dict[str, typing.Any]:
     return _service("scheduler").reminders_snapshot()
 
 
+def _notes() -> typing.Dict[str, typing.Any]:
+    from modules import notes
+
+    return notes.snapshot()
+
+
 class _Panel(typing.NamedTuple):
     module: str  # must be enabled for this panel to exist
     label: str
@@ -70,6 +76,7 @@ _PANELS: typing.Dict[str, _Panel] = {
     "weather": _Panel("weather", "Weather", _weather),
     "agenda": _Panel("calendar", "Today", _agenda),
     "reminders": _Panel("scheduler", "Timers", _reminders),
+    "notes": _Panel("notes", "Lists", _notes),
     "devices": _Panel("home_assistant", "Devices", _devices),
     "music": _Panel("spotify", "Music", _music),
     "accounts": _Panel("google_accounts", "Accounts", _accounts),
