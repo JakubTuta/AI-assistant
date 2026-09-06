@@ -106,17 +106,20 @@ class Spotify:
     @method_job
     def play_songs(self, title: str, artist: str, content_type: str = "") -> typing.Optional[str]:
         """
-        [SPOTIFY SERVICE METHOD] Searches and plays music on Spotify by title and/or artist.
-        This service method integrates with Spotify API to find and start playbook of songs,
-        albums, or artist catalogs based on user search criteria.
+        [SPOTIFY JOB] Plays music on Spotify: a song, an album, everything by an artist,
+        or one of the user's own playlists. With no title and no artist it just resumes
+        whatever was playing.
 
         Args:
-            title (str): Title of the song or an album to play, or name of the artist if no album/song is specified. (required)
+            title (str): Title of the song, album or playlist to play, or the artist's
+                name if no album/song is specified. (required)
             artist (str): Artist of the song to play, if not specified by user then set to empty string (""). (required)
             content_type (str): Type of content to play - "track" for a single song, "album" for a full album,
-                               "artist" for all music by an artist. Leave empty to use first found result.
+                               "artist" for all music by an artist, "playlist" for one of the user's playlists.
+                               Leave empty to use first found result.
                                Infer from user intent: "play song X" → "track", "play album X" → "album",
-                               "play all music by X" / "play everything by X" → "artist"
+                               "play all music by X" / "play everything by X" → "artist",
+                               "play my X playlist" → "playlist"
 
         Returns:
             str: Success message with track/album details or error message if not found.
@@ -125,6 +128,9 @@ class Spotify:
         if not title and not artist:
             self._transport("put", "https://api.spotify.com/v1/me/player/play")
             return "Playback resumed."
+
+        if (content_type or "").strip().lower() == "playlist":
+            return self._play_playlist(title or artist)
 
         search_response = self._search(query=title, artist=artist, content_type=content_type)
 
@@ -304,14 +310,18 @@ class Spotify:
 
     @capture_response(mute=True, one_message=True)
     @method_job
-    def control_playback(self, action: str = "toggle") -> str:
+    def control_playback(self, action: str = "toggle", value: str = "") -> str:
         """
-        [SPOTIFY JOB] Controls Spotify transport: play, pause, skip, go back, restart the
-        current track, or toggle shuffle. This is the single tool for all of those.
+        [SPOTIFY JOB] Controls Spotify playback: play, pause, skip, go back, restart,
+        jump to a position, shuffle, repeat, like or unlike the current song, or move
+        playback to another device. This is the single tool for all of those.
 
         Args:
             action (str): One of: toggle (play/pause depending on current state,
-                the default), play, pause, next, previous, restart, shuffle.
+                the default), play, pause, next, previous, restart, seek, shuffle,
+                repeat, like, unlike, transfer.
+            value (str): Only for two actions — the position in seconds for "seek",
+                and the device name to play on for "transfer".
 
         Returns:
             str: Confirmation of what changed.
@@ -320,6 +330,17 @@ class Spotify:
 
         if act == "toggle":
             act = "pause" if self._is_playback_playing() else "play"
+
+        if act in ("like", "save", "favorite", "favourite"):
+            return self._set_liked(True)
+        if act in ("unlike", "unsave", "dislike"):
+            return self._set_liked(False)
+        if act == "seek":
+            return self._seek(value)
+        if act == "repeat":
+            return self._cycle_repeat()
+        if act == "transfer":
+            return self._transfer_playback(value)
 
         if act in ("play", "resume", "start"):
             self._transport("put", "https://api.spotify.com/v1/me/player/play")
@@ -345,9 +366,55 @@ class Spotify:
             return self._set_shuffle(not state.get("shuffle_state", False))
 
         raise Exception(
-            f"Unknown action '{action}'. Use toggle, play, pause, next, "
-            "previous, restart or shuffle."
+            f"Unknown action '{action}'. Use toggle, play, pause, next, previous, "
+            "restart, seek, shuffle, repeat, like, unlike or transfer."
         )
+
+    def _seek(self, value: str) -> str:
+        try:
+            seconds = max(0, int(float(value)))
+        except (TypeError, ValueError):
+            raise Exception("Seek needs a position in seconds, e.g. value='90'.") from None
+        self._device_call(
+            "put",
+            f"https://api.spotify.com/v1/me/player/seek?position_ms={seconds * 1000}",
+            "&",
+        )
+        return f"Jumped to {seconds // 60}:{seconds % 60:02d}."
+
+    # Spotify's repeat is a three-state field, not a toggle; cycling is what a
+    # user pressing the button expects.
+    _REPEAT_CYCLE = {"off": "context", "context": "track", "track": "off"}
+    _REPEAT_SAID = {"off": "Repeat off.", "context": "Repeating the album.",
+                    "track": "Repeating this song."}
+
+    def _cycle_repeat(self) -> str:
+        state = self._get_playback_state()
+        if not state:
+            raise Exception("No active Spotify device.")
+        wanted = self._REPEAT_CYCLE.get(state.get("repeat_state", "off"), "context")
+        self._device_call(
+            "put", f"https://api.spotify.com/v1/me/player/repeat?state={wanted}", "&"
+        )
+        return self._REPEAT_SAID[wanted]
+
+    def _transfer_playback(self, name: str) -> str:
+        if not name:
+            raise Exception("Say which device to play on, e.g. value='phone'.")
+        needle = name.strip().lower()
+        devices = self._devices()
+        match = next((d for d in devices if needle in d.get("name", "").lower()), None)
+        if match is None:
+            known = ", ".join(d.get("name", "?") for d in devices) or "none"
+            raise Exception(f"No Spotify device called '{name}'. Available: {known}.")
+        self._make_spotify_request(
+            "put",
+            "https://api.spotify.com/v1/me/player",
+            json={"device_ids": [match["id"]], "play": True},
+        )
+        # The old device id is stale the moment playback moves.
+        self.device_id = match["id"]
+        return f"Playing on {match['name']}."
 
     @capture_response(mute=True, one_message=True)
     @method_job
@@ -390,43 +457,48 @@ class Spotify:
         return self._apply_volume(target)
 
     @capture_response
-    @method_job
-    def set_like(self, action: str = "toggle") -> str:
-        """
-        [SPOTIFY JOB] Likes, unlikes, or toggles the like state of the currently
-        playing track in the user's Liked Songs.
-
-        Args:
-            action (str): One of: toggle (the default), like, unlike.
-
-        Returns:
-            str: Confirmation of the new like state.
-        """
-        act = (action or "toggle").strip().lower()
-
-        if act in ("like", "save", "favorite", "favourite"):
-            return self._set_liked(True)
-        if act in ("unlike", "remove", "unsave", "dislike"):
-            return self._set_liked(False)
-
-        track_id = self._get_current_track_id()
-        if not track_id:
-            return "Nothing is currently playing."
-        response = self._make_spotify_request(
-            "get", f"https://api.spotify.com/v1/me/tracks/contains?ids={track_id}"
-        )
-        return self._set_liked(not response.json()[0])
-
-    @capture_response
     @retry_on_unauthorized("_refresh_access_token")
     @method_job
-    def get_current_track(self) -> str:
+    def spotify_info(self, what: str = "current", query: str = "") -> str:
         """
-        [SPOTIFY SERVICE METHOD] Announces the currently playing track and artist on Spotify.
+        [SPOTIFY JOB] Reports what Spotify is doing or knows: the song playing now, what
+        is queued next, the user's playlists, the devices they can play on, or the
+        results of a search.
+
+        Args:
+            what (str): "current" (the default), "queue", "playlists", "devices"
+                or "search".
+            query (str): What to search for. (required for "search")
 
         Returns:
-            str: Track and artist name, or a message if nothing is playing.
+            str: The requested information.
         """
+        wanted = (what or "current").strip().lower()
+
+        if wanted in ("current", "track", "now", "playing"):
+            return self._describe_current()
+        if wanted == "queue":
+            return self._describe_queue()
+        if wanted in ("playlists", "playlist"):
+            playlists = self._get_user_playlists()
+            if not playlists:
+                return "No playlists found."
+            return "Your playlists:\n" + "\n".join(f"  {p['name']}" for p in playlists)
+        if wanted in ("devices", "device"):
+            return self._describe_devices()
+        if wanted == "search":
+            if not query:
+                return "Error: 'query' is required for a search."
+            found = self._search(query=query)
+            if not found:
+                return f"Nothing on Spotify matches '{query}'."
+            kind = found.get("type", "").rstrip("s") or "result"
+            artist = found.get("artist", "")
+            return f"Found {kind}: {found['name']}" + (f" by {artist}." if artist else ".")
+
+        return f"Unknown option '{what}'. Use current, queue, playlists, devices or search."
+
+    def _describe_current(self) -> str:
         state = self._get_playback_state()
         if not state or "item" not in state or state.get("item") is None:
             result = "Nothing is currently playing on Spotify."
@@ -442,7 +514,7 @@ class Spotify:
     def playback_snapshot(self) -> typing.Dict[str, typing.Any]:
         """Playback state as data, for the now-playing panel.
 
-        Not a job: get_current_track says the same thing in a sentence, and a
+        Not a job: spotify_info says the same thing in a sentence, and a
         progress bar needs numbers a sentence cannot carry.
         """
         state = self._get_playback_state()
@@ -470,45 +542,11 @@ class Spotify:
             "volume": device.get("volume_percent"),
         }
 
-    @capture_response
-    @retry_on_unauthorized("_refresh_access_token")
-    @method_job
-    def get_playlists(self) -> str:
-        """
-        [SPOTIFY SERVICE METHOD] Lists all playlists owned or followed by the current user.
-
-        Returns:
-            str: Names of all playlists.
-        """
-        playlists = self._get_user_playlists()
-        if not playlists:
-            return "No playlists found."
-        return "Your playlists:\n" + "\n".join(f"  {p['name']}" for p in playlists)
-
-    @capture_response(mute=True, one_message=True)
-    @retry_on_unauthorized("_refresh_access_token")
-    @method_job
-    def play_playlist(self, name: str) -> typing.Optional[str]:
-        """
-        [SPOTIFY SERVICE METHOD] Finds a user playlist by name and starts playback.
-
-        Args:
-            name (str): Full or partial name of the playlist to play. (required)
-
-        Returns:
-            str: Success or error message.
-        """
-        playlists = self._get_user_playlists()
-        name_lower = name.lower()
-
-        match = next(
-            (p for p in playlists if name_lower in p["name"].lower()),
-            None,
-        )
-
+    def _play_playlist(self, name: str) -> str:
+        match = self._find_playlist(name)
         if not match:
-            # mute=True job — raise so the always-spoken error path fires
-            # instead of a soft-fail string being swallowed like a success.
+            # play_songs is mute=True — raise so the always-spoken error path
+            # fires instead of a soft-fail string being swallowed as success.
             raise Exception(f"Playlist '{name}' not found.")
 
         self._device_call(
@@ -518,86 +556,62 @@ class Spotify:
         )
         return f"Playing playlist {match['name']}."
 
-    @capture_response
-    @retry_on_unauthorized("_refresh_access_token")
-    @method_job
-    def add_to_playlist(self, playlist_name: str, title: str = "", artist: str = "") -> str:
-        """
-        [SPOTIFY SERVICE METHOD] Adds a song to a user playlist by name.
-        If no song is specified, adds the currently playing track.
-
-        Args:
-            playlist_name (str): Full or partial name of the target playlist. (required)
-            title (str): Title of the song to add. If empty, adds currently playing track.
-            artist (str): Artist of the song, used to narrow search. Leave empty if not specified.
-
-        Returns:
-            str: Confirmation message or error.
-        """
-        playlists = self._get_user_playlists()
-        name_lower = playlist_name.lower()
-        playlist = next((p for p in playlists if name_lower in p["name"].lower()), None)
-        if not playlist:
-            return f"Playlist '{playlist_name}' not found."
-
-        if title:
-            search_response = self._search(query=title, artist=artist, content_type="track")
-            if not search_response:
-                return f"Could not find '{title}'" + (f" by {artist}" if artist else "") + "."
-            uris = self._get_songs_from_search(search_response)
-            track_label = f"{search_response['name']} by {search_response['artist']}"
-        else:
-            track_id = self._get_current_track_id()
-            if not track_id:
-                return "Nothing is currently playing."
-            state = self._get_playback_state()
-            item = state.get("item", {}) if state else {}
-            track_label = item.get("name", "Current track")
-            uris = [f"spotify:track:{track_id}"]
-
-        self._make_spotify_request(
-            "post",
-            f"https://api.spotify.com/v1/playlists/{playlist['id']}/tracks",
-            json={"uris": uris},
+    def _find_playlist(self, name: str) -> typing.Optional[typing.Dict[str, str]]:
+        needle = (name or "").lower()
+        return next(
+            (p for p in self._get_user_playlists() if needle in p["name"].lower()), None
         )
-        return f"Added {track_label} to {playlist['name']}."
 
     @capture_response
     @retry_on_unauthorized("_refresh_access_token")
-    @method_job
-    def remove_from_playlist(self, playlist_name: str, title: str = "", artist: str = "") -> str:
+    @method_job(confirms=True)
+    def manage_playlist(
+        self,
+        action: str = "add",
+        playlist_name: str = "",
+        title: str = "",
+        artist: str = "",
+    ) -> str:
         """
-        [SPOTIFY SERVICE METHOD] Removes a song from a user playlist by name.
-        If no song is specified, removes the currently playing track.
+        [SPOTIFY JOB] Changes a playlist: puts a song in it, takes one out, makes a new
+        one, or deletes one. With no song named, the song playing right now is used.
 
         Args:
-            playlist_name (str): Full or partial name of the target playlist. (required)
-            title (str): Title of the song to remove. If empty, removes currently playing track.
-            artist (str): Artist of the song, used to narrow search. Leave empty if not specified.
+            action (str): "add" (the default), "remove", "create" or "delete".
+            playlist_name (str): Full or partial name of the playlist. (required)
+            title (str): Title of the song. Leave empty to use the song playing now.
+            artist (str): Artist of the song, used to narrow the search.
 
         Returns:
             str: Confirmation message or error.
         """
-        playlists = self._get_user_playlists()
-        name_lower = playlist_name.lower()
-        playlist = next((p for p in playlists if name_lower in p["name"].lower()), None)
+        wanted = (action or "add").strip().lower()
+        if not playlist_name:
+            return "Error: playlist_name is required."
+
+        if wanted == "create":
+            return self._create_playlist(playlist_name)
+        if wanted in ("delete", "remove_playlist"):
+            return self._delete_playlist(playlist_name)
+        if wanted not in ("add", "remove"):
+            return f"Unknown action '{action}'. Use add, remove, create or delete."
+
+        playlist = self._find_playlist(playlist_name)
         if not playlist:
             return f"Playlist '{playlist_name}' not found."
 
-        if title:
-            search_response = self._search(query=title, artist=artist, content_type="track")
-            if not search_response:
-                return f"Could not find '{title}'" + (f" by {artist}" if artist else "") + "."
-            uris = self._get_songs_from_search(search_response)
-            track_label = f"{search_response['name']} by {search_response['artist']}"
-        else:
-            track_id = self._get_current_track_id()
-            if not track_id:
-                return "Nothing is currently playing."
-            state = self._get_playback_state()
-            item = state.get("item", {}) if state else {}
-            track_label = item.get("name", "Current track")
-            uris = [f"spotify:track:{track_id}"]
+        resolved = self._resolve_track(title, artist)
+        if isinstance(resolved, str):
+            return resolved
+        uris, track_label = resolved
+
+        if wanted == "add":
+            self._make_spotify_request(
+                "post",
+                f"https://api.spotify.com/v1/playlists/{playlist['id']}/tracks",
+                json={"uris": uris},
+            )
+            return f"Added {track_label} to {playlist['name']}."
 
         self._make_spotify_request(
             "delete",
@@ -605,6 +619,45 @@ class Spotify:
             json={"tracks": [{"uri": uri} for uri in uris]},
         )
         return f"Removed {track_label} from {playlist['name']}."
+
+    def _resolve_track(
+        self, title: str, artist: str
+    ) -> typing.Union[str, typing.Tuple[typing.List[str], str]]:
+        """(uris, label) for the named song, or the song playing now. A plain
+        string is the reason it could not be resolved."""
+        if title:
+            found = self._search(query=title, artist=artist, content_type="track")
+            if not found:
+                return f"Could not find '{title}'" + (f" by {artist}" if artist else "") + "."
+            return self._get_songs_from_search(found), f"{found['name']} by {found['artist']}"
+
+        track_id = self._get_current_track_id()
+        if not track_id:
+            return "Nothing is currently playing."
+        state = self._get_playback_state()
+        item = state.get("item", {}) if state else {}
+        return [f"spotify:track:{track_id}"], item.get("name", "Current track")
+
+    def _create_playlist(self, name: str) -> str:
+        me = self._make_spotify_request("get", "https://api.spotify.com/v1/me").json()
+        created = self._make_spotify_request(
+            "post",
+            f"https://api.spotify.com/v1/users/{me['id']}/playlists",
+            json={"name": name, "public": False},
+        ).json()
+        return f"Created playlist '{created.get('name', name)}'."
+
+    def _delete_playlist(self, name: str) -> str:
+        playlist = self._find_playlist(name)
+        if not playlist:
+            return f"Playlist '{name}' not found."
+        # Spotify has no delete: unfollowing your own playlist is what the app's
+        # "Delete" button does, and it is what makes it disappear from the list.
+        self._make_spotify_request(
+            "delete",
+            f"https://api.spotify.com/v1/playlists/{playlist['id']}/followers",
+        )
+        return f"Deleted playlist '{playlist['name']}'."
 
 
     def _set_shuffle(self, state: bool) -> str:
@@ -717,12 +770,14 @@ class Spotify:
         return response.json()
 
     @retry_on_unauthorized("_refresh_access_token")
-    def _get_active_devices(self) -> typing.Optional[str]:
+    def _devices(self) -> typing.List[typing.Dict[str, typing.Any]]:
         response = self._make_spotify_request(
             "get", "https://api.spotify.com/v1/me/player/devices"
         )
-        devices = response.json().get("devices", [])
+        return response.json().get("devices", [])
 
+    def _get_active_devices(self) -> typing.Optional[str]:
+        devices = self._devices()
         if not devices:
             return None
 
@@ -731,6 +786,31 @@ class Spotify:
             (device for device in devices if device["is_active"]), devices[0]
         )
         return active_device.get("id")
+
+    def _describe_devices(self) -> str:
+        devices = self._devices()
+        if not devices:
+            return "No Spotify devices are available — open Spotify somewhere first."
+        lines = [f"{len(devices)} Spotify device(s):"]
+        for device in devices:
+            mark = " (playing here)" if device.get("is_active") else ""
+            lines.append(f"  {device.get('name', '?')} — {device.get('type', '?')}{mark}")
+        return "\n".join(lines)
+
+    def _describe_queue(self) -> str:
+        response = self._make_spotify_request(
+            "get", "https://api.spotify.com/v1/me/player/queue"
+        )
+        if response.status_code == 204 or not response.content:
+            return "Nothing is queued."
+        queued = response.json().get("queue", [])[:10]
+        if not queued:
+            return "Nothing is queued."
+        lines = [f"Next up ({len(queued)}):"]
+        for item in queued:
+            artists = ", ".join(a["name"] for a in item.get("artists", []))
+            lines.append(f"  {item.get('name', '?')}" + (f" — {artists}" if artists else ""))
+        return "\n".join(lines)
 
     def _refresh_access_token(self, refresh_token):
         headers = {
@@ -747,6 +827,15 @@ class Spotify:
         if response.status_code == 200:
             token_info = response.json()
             self.access_token = token_info["access_token"]
+            # Spotify may hand back a rotated refresh token; keep the old one
+            # when it does not. Without this write-back the cached token stayed
+            # permanently expired, so every process start burned a refresh call.
+            self.refresh_token = token_info.get("refresh_token") or refresh_token
+            self._save_tokens(
+                self.access_token,
+                self.refresh_token,
+                token_info.get("expires_in"),
+            )
             return self.access_token
         else:
             self.access_token = None
@@ -828,15 +917,21 @@ class Spotify:
             token_info = response.json()
             self.access_token = token_info["access_token"]
             self.refresh_token = token_info["refresh_token"]
-            self._save_tokens(self.access_token, self.refresh_token)
+            self._save_tokens(
+                self.access_token, self.refresh_token, token_info.get("expires_in")
+            )
             return self.access_token, self.refresh_token
         else:
             self.access_token = None
             self.refresh_token = None
             return None, None
 
-    def _save_tokens(self, access_token, refresh_token):
-        expiration_date = datetime.datetime.now() + datetime.timedelta(seconds=3600)
+    def _save_tokens(self, access_token, refresh_token, expires_in=None):
+        try:
+            lifetime = int(expires_in)
+        except (TypeError, ValueError):
+            lifetime = 3600
+        expiration_date = datetime.datetime.now() + datetime.timedelta(seconds=lifetime)
         Cache.set_value(self.SPOTIFY_OAUTH_ACCESS_KEY, access_token)
         Cache.set_value(self.SPOTIFY_OAUTH_REFRESH_KEY, refresh_token)
         Cache.set_value(self.SPOTIFY_OAUTH_EXPIRATION_DATE, expiration_date.isoformat())

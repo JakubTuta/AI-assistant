@@ -316,6 +316,16 @@ export interface RemindersPanel {
   reminders: Reminder[];
 }
 
+export interface NoteList {
+  name: string;
+  count: number;
+  items: string[];
+}
+
+export interface NotesPanel {
+  lists: NoteList[];
+}
+
 export async function fetchConfig(): Promise<AppConfig> {
   const res = await fetch(`${BASE}/config`);
   if (!res.ok) throw new Error(`Config fetch failed: ${res.status}`);

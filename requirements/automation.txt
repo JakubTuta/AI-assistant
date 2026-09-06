@@ -1,3 +1,7 @@
 # Mouse/keyboard automation dependencies (league module).
 PyAutoGUI
 pynput
+# Screen capture + OCR: the auto-accept watcher reads the queue pop-up off the screen.
+# easyocr is only used when the AI provider has no vision (see ScreenReader).
+mss
+easyocr

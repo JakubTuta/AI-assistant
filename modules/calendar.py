@@ -777,10 +777,12 @@ class Calendar:
         )
 
     @capture_response
-    @method_job
-    def create_event(
+    @method_job(confirms=True)
+    def manage_event(
         self,
-        title: str,
+        action: str = "create",
+        title: str = "",
+        query: str = "",
         date: str = "",
         start_time: str = "",
         end_time: str = "",
@@ -790,21 +792,45 @@ class Calendar:
         account: str = "",
     ) -> str:
         """
-        [CALENDAR JOB] Creates a new event on Google Calendar.
+        [CALENDAR JOB] Creates a calendar event, changes one, or deletes one. Editing
+        and deleting find the event by `query` and/or `date`, and refuse to guess when
+        more than one matches.
 
         Args:
-            title (str): Event title or name. (required)
-            date (str): Date of the event (e.g. 'today', 'tomorrow', '2025-03-15'). Provide date or start_time.
-            start_time (str): Start time (e.g. '2pm', '14:00', '9:30am'). Provide date or start_time.
-            end_time (str): End time (e.g. '3pm', '15:00'). Defaults to 1 hour after start.
-            description (str): Optional description or notes for the event.
-            location (str): Optional location or meeting link.
-            calendar_name (str): Name of the calendar to add to (default: primary).
+            action (str): "create" (the default), "edit" or "delete".
+            title (str): Event title. (required when creating; when editing, the new title)
+            query (str): Which event to change — its title or a search query.
+                (provide query or date when editing or deleting)
+            date (str): The event's date, e.g. "today", "tomorrow", "2025-03-15".
+                When creating this is when it happens; when editing it both narrows
+                the search and becomes the new date.
+            start_time (str): Start time, e.g. "2pm", "14:00", "9:30am".
+            end_time (str): End time. Defaults to an hour after the start.
+            description (str): Description or notes for the event.
+            location (str): Location or meeting link.
+            calendar_name (str): Which calendar to add to (default: primary).
             account (str): Google account to use (default: primary).
 
         Returns:
-            str: Confirmation with event details, or an error message.
+            str: Confirmation of what changed, or an error message.
         """
+        wanted = (action or "create").strip().lower()
+        if wanted in ("edit", "update", "change", "move"):
+            # With a query to find it by, `date` is where the event is moving to.
+            # Without one, `date` is the only handle on which event is meant, so
+            # it locates instead — "move the standup to Friday" and "change the
+            # thing on Tuesday" are both sayable.
+            search_date = "" if query else date
+            new_date = date if query else ""
+            return self._edit_event(
+                query, search_date, title, new_date, start_time, end_time,
+                description, location, account,
+            )
+        if wanted in ("delete", "remove", "cancel"):
+            return self._delete_event(query, date, account)
+        if wanted not in ("create", "add", "new"):
+            return f"Unknown action '{action}'. Use create, edit or delete."
+
         if not title:
             return "Error: Event title is required."
         if not date and not start_time:
@@ -884,42 +910,15 @@ class Calendar:
         )
         return f"Event created: '{title}' on {start_str}."
 
-    @capture_response
-    @method_job
-    def edit_event(
-        self,
-        query: str = "",
-        date: str = "",
-        new_title: str = "",
-        new_date: str = "",
-        new_start_time: str = "",
-        new_end_time: str = "",
-        new_description: str = "",
-        new_location: str = "",
-        account: str = "",
-    ) -> str:
+    def _resolve_one_event(
+        self, query: str, date: str, account: str
+    ) -> typing.Tuple[typing.Optional[typing.Dict], str]:
+        """Find exactly one event to change. Returns (event, problem message).
+
+        Deletes already refused an ambiguous match; edits silently took the
+        first result, so "move the standup" quietly rewrote whichever standup
+        the API happened to return first.
         """
-        [CALENDAR JOB] Edits an existing calendar event.
-
-        Args:
-            query (str): Search query or event title to find the event. Provide query or date (at least one required).
-            date (str): Date to search on (narrows the search). Provide query or date (at least one required).
-            new_title (str): New title for the event (leave empty to keep current).
-            new_date (str): New date (leave empty to keep current).
-            new_start_time (str): New start time (leave empty to keep current).
-            new_end_time (str): New end time (leave empty to keep current).
-            new_description (str): New description (leave empty to keep current).
-            new_location (str): New location (leave empty to keep current).
-            account (str): Google account to use (default: primary).
-
-        Returns:
-            str: Confirmation of the update, or an error message.
-        """
-        if not query and not date:
-            return "Error: Provide a query or date to find the event to edit."
-
-        # Edits patch a specific calendar; pin to one account for search + patch.
-        account = GoogleAccounts.resolve(account or None)
         search_date = self._parse_date(date) if date else None
         if search_date:
             events = self._fetch_events_for_day(search_date, account=account)
@@ -934,9 +933,38 @@ class Calendar:
             ]
 
         if not events:
-            return "No matching event found."
+            return None, "No matching event found."
 
-        event = events[0]
+        if len(events) > 1:
+            titles = [e.get("summary", "(untitled)") for e in events[:5]]
+            return None, (
+                f"Found {len(events)} matching events. Be more specific. "
+                f"First matches: {', '.join(titles)}"
+            )
+
+        return events[0], ""
+
+    def _edit_event(
+        self,
+        query: str = "",
+        date: str = "",
+        new_title: str = "",
+        new_date: str = "",
+        new_start_time: str = "",
+        new_end_time: str = "",
+        new_description: str = "",
+        new_location: str = "",
+        account: str = "",
+    ) -> str:
+        if not query and not date:
+            return "Error: Provide a query or date to find the event to edit."
+
+        # Edits patch a specific calendar; pin to one account for search + patch.
+        account = GoogleAccounts.resolve(account or None)
+        event, problem = self._resolve_one_event(query, date, account)
+        if problem:
+            return problem
+        assert event is not None
         event_id = event["id"]
         current_title = event.get("summary", "(untitled)")
         patch: typing.Dict[str, typing.Any] = {}
@@ -1020,54 +1048,21 @@ class Calendar:
 
         return f"Event updated: '{updated.get('summary', current_title)}'."
 
-    @capture_response
-    @method_job
-    def delete_event(
+    def _delete_event(
         self,
         query: str = "",
         date: str = "",
         account: str = "",
     ) -> str:
-        """
-        [CALENDAR JOB] Deletes a calendar event. Requires confirmation from the user.
-
-        Args:
-            query (str): Event title or search query to find the event. Provide query or date (at least one required).
-            date (str): Date to search on (narrows the search). Provide query or date (at least one required).
-            account (str): Google account to use (default: primary).
-
-        Returns:
-            str: Confirmation that the event was deleted, or an error message.
-        """
         if not query and not date:
             return "Error: Provide a query or date to find the event to delete."
 
         # Deletes target a specific calendar; pin to one account.
         account = GoogleAccounts.resolve(account or None)
-        search_date = self._parse_date(date) if date else None
-        if search_date:
-            events = self._fetch_events_for_day(search_date, account=account)
-        else:
-            events = self._fetch_events_range(
-                account=account, hours_ahead=720, max_results=50, q=query
-            )
-
-        if query:
-            events = [
-                e for e in events if query.lower() in e.get("summary", "").lower()
-            ]
-
-        if not events:
-            return "No matching event found."
-
-        if len(events) > 1:
-            titles = [e.get("summary", "(untitled)") for e in events[:5]]
-            return (
-                f"Found {len(events)} matching events. Be more specific. "
-                f"First matches: {', '.join(titles)}"
-            )
-
-        event = events[0]
+        event, problem = self._resolve_one_event(query, date, account)
+        if problem:
+            return problem
+        assert event is not None
         event_id = event["id"]
         title = event.get("summary", "(untitled)")
         start_str = self._format_time(

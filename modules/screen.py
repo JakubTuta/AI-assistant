@@ -19,42 +19,37 @@ _SCREEN_REQ = Requirement(
 )
 
 
-@register_job(module_name="screen", requires=_SCREEN_REQ)
+@register_job(module_name="screen", requires=_SCREEN_REQ, summary="Look at the screen")
 @capture_response
-def save_screenshot() -> str:
+def look_at_screen(question: str = "", save: bool = False) -> str:
     """
-    [SCREEN CAPTURE JOB] Captures and saves a screenshot of the current active screen to disk.
-    This standalone task creates a timestamped image file of whatever is currently displayed
-    on the screen and stores it in the screenshots directory for later reference.
-
-    Returns:
-        str: Confirmation with saved file path.
-    """
-    os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
-    screenshot = ScreenReader.take_screenshot(target="active")
-    filename = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ".png"
-    file_path = os.path.join(SCREENSHOTS_DIR, filename)
-    image = Image.fromarray(screenshot)
-    image.save(file_path)
-    return f"Screenshot saved: {file_path}"
-
-
-@register_job(module_name="screen", requires=_SCREEN_REQ)
-@capture_response
-def explain_screenshot(user_input: str) -> str:
-    """
-    [AI VISION JOB] Captures the current screen and provides AI-powered analysis and explanation.
-    This intelligent task takes a screenshot and uses computer vision AI to describe, analyze,
-    and explain the visual content based on the user's specific question or request.
+    [SCREEN JOB] Looks at what is on screen right now and answers a question about it —
+    what an error says, what is in a picture, what a form is asking for. Can also keep
+    a copy of the screenshot as a file.
 
     Args:
-        user_input (str): The user's specific question or request about the screenshot content.
+        question (str): What to answer about the screen. Leave empty just to describe it.
+        save (bool): Also write the screenshot to the screenshots folder.
 
     Returns:
-        str: Detailed AI-generated explanation of the screen content based on user's query.
+        str: The answer, and the file path when one was saved.
     """
     screenshot = ScreenReader.take_screenshot(target="active")
+
+    saved_note = ""
+    if save:
+        os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+        filename = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ".png"
+        file_path = os.path.join(SCREENSHOTS_DIR, filename)
+        Image.fromarray(screenshot).save(file_path)
+        saved_note = f"\nSaved to {file_path}"
+
     ai_service = ServiceRegistry.get_service_instance("ai")
     if not ai_service:
-        return "Error: AI service not available"
-    return ai_service.explain_screenshot(user_input, screenshot)
+        # Still say what happened: a saved file with no answer is a real result.
+        return saved_note.strip() or "Error: AI service not available."
+
+    answer = ai_service.explain_screenshot(
+        question or "Describe what is on this screen.", screenshot
+    )
+    return f"{answer}{saved_note}"

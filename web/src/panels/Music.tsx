@@ -145,7 +145,14 @@ export function Music() {
         >
           <SkipForward size={17} />
         </RoundButton>
-        <RoundButton label="Like" onClick={() => act('set_like', { action: 'toggle' })} disabled={busy}>
+        {/* One-way: the playback snapshot does not carry whether the track is
+            already liked, and asking Spotify on every poll to light up one
+            heart is not worth the request. */}
+        <RoundButton
+          label="Save to your library"
+          onClick={() => act('control_playback', { action: 'like' })}
+          disabled={busy}
+        >
           <Heart size={15} />
         </RoundButton>
       </div>

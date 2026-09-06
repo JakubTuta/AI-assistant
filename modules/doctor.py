@@ -1,8 +1,6 @@
 import os
 
-from helpers.decorators import capture_response
 from helpers.paths import repo_path
-from helpers.registry import register_job
 from helpers.requirements import Requirement, evaluate
 
 _NON_MODULE_CHECKS = [
@@ -369,20 +367,3 @@ def _wakeword_selftest() -> list:
         lines.append(f"    ✗ Self-test failed: {e}")
 
     return lines
-
-
-@register_job
-@capture_response
-def check_setup() -> str:
-    """
-    [SYSTEM DIAGNOSTICS JOB] Validates the full assistant setup and prints a ✓/✗ checklist.
-    Checks .env, config.yaml, AI provider, and each integration's requirements.
-    Prints exactly what to fix for anything that is missing or broken.
-
-    Returns:
-        str: Full diagnostics report with ✓/✗ per component and fix instructions.
-    """
-    from helpers.cache import Cache
-
-    voice_mode = Cache.get_audio()
-    return run_doctor(voice_mode=bool(voice_mode))

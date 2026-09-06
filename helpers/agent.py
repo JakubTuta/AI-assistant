@@ -159,6 +159,18 @@ def run_agent(
 
             exec_name = _resolve_job_name(name, available_jobs)
             if exec_name is not None:
+                from helpers import confirm as _confirm
+
+                needs_ok = _confirm.check(exec_name, args)
+                if needs_ok is not None:
+                    logger.log_function_response(name, needs_ok, user_input)
+                    record_tool_outcome(exec_name, False, False)
+                    calls_made.append({"name": name, "args": args, "result": needs_ok})
+                    messages.append(
+                        {"role": "tool_result", "id": tool_id, "name": name, "content": needs_ok}
+                    )
+                    continue
+
                 func = available_jobs[exec_name]
                 # capture_response-wrapped jobs record their own outcome (with
                 # the correct quiet/mute flag); anything else must be recorded

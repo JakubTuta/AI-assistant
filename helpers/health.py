@@ -78,7 +78,7 @@ def print_startup_summary(voice_mode: bool = False) -> None:
         else:
             print("  ✓ Voice: dependencies present.")
 
-    print("  Type 'help' for commands, 'check setup' for full diagnostics.")
+    print("  Ask 'what can you do' for the command list, or 'check my setup' for full diagnostics.")
 
 
 def _check_voice_deps() -> typing.List[str]:

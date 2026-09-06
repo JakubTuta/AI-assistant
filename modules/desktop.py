@@ -23,13 +23,26 @@ def _require_actions(action: str) -> typing.Optional[str]:
     if not _actions_allowed():
         return (
             f"Action '{action}' is disabled. "
-            "Set modules.desktop.allow_actions: true in config.yaml to enable "
-            "type/click/clipboard-write/file-open operations."
+            "Set modules.desktop.allow_actions: true in config.yaml to let Wony "
+            "act on this computer — typing, clicking, changing windows, writing "
+            "the clipboard, and opening or writing files."
         )
     return None
 
 
 _SKIP_DIRS = {"node_modules", "__pycache__", "venv", ".git", ".venv"}
+
+# How much of the clipboard is read back. A tuning knob: past this, a spoken
+# read-out drags and the model is paying tokens for a wall of pasted text.
+_CLIPBOARD_PREVIEW_CHARS = 500
+
+# One page of a text file. Same reasoning (and roughly the same size) as
+# web._MAX_CONTENT_CHARS: past this the model is paying for text nobody asked
+# to hear. `offset` reads the next page.
+_MAX_FILE_CHARS = 6000
+
+# Entries listed for a folder before the listing is truncated.
+_MAX_DIR_ENTRIES = 100
 
 
 def _resolve_executable(name: str) -> typing.Optional[str]:
@@ -66,6 +79,12 @@ def _resolve_executable(name: str) -> typing.Optional[str]:
         except OSError:
             continue
     return None
+
+
+def _box_center(box: typing.Dict[str, typing.Tuple[int, int]]) -> typing.Tuple[int, int]:
+    left, top = box["top_left"]
+    right, bottom = box["bottom_right"]
+    return (left + right) // 2, (top + bottom) // 2
 
 
 def _known_dirs() -> typing.List[str]:
@@ -144,39 +163,120 @@ class Desktop:
 
     # ------------------------------------------------------------------ read-only (always allowed)
 
-    @method_job
+    @method_job(confirms={"close"})
     @capture_response
-    def list_windows(self) -> str:
+    def manage_window(self, action: str = "list", title: str = "") -> str:
         """
-        [DESKTOP JOB] Lists all currently open application windows on the desktop.
+        [DESKTOP JOB] Works with the open application windows: lists them, or brings
+        one to the front, minimises, maximises or closes it by (partial) title.
+        Everything but listing requires modules.desktop.allow_actions in config.
+
+        Args:
+            action (str): "list" (the default), "focus", "minimize", "maximize"
+                or "close".
+            title (str): Part of the window title, case-insensitive.
+                (required for everything except "list")
 
         Returns:
-            str: Names of all visible windows.
+            str: The window list, or confirmation of what changed.
         """
         import pygetwindow as gw
 
-        windows = [w.title for w in gw.getAllWindows() if w.title.strip()]
-        if not windows:
-            return "No visible windows found."
-        return "Open windows:\n" + "\n".join(f"  - {w}" for w in sorted(set(windows)))
+        wanted = (action or "list").strip().lower()
 
-    @method_job
+        if wanted in ("list", "show"):
+            windows = [w.title for w in gw.getAllWindows() if w.title.strip()]
+            if not windows:
+                return "No visible windows found."
+            return "Open windows:\n" + "\n".join(f"  - {w}" for w in sorted(set(windows)))
+
+        if wanted not in ("focus", "minimize", "minimise", "maximize", "maximise", "close"):
+            return f"Unknown action '{action}'. Use list, focus, minimize, maximize or close."
+
+        # One gate for every window action, rather than per job — focus_window
+        # shipped without one for exactly that reason.
+        blocked = _require_actions(f"window {wanted}")
+        if blocked:
+            return blocked
+        if not title:
+            return f"Error: which window should I {wanted}?"
+
+        needle = title.lower()
+        windows = [w for w in gw.getAllWindows() if needle in w.title.lower()]
+        if not windows:
+            return f"No window found matching '{title}'."
+
+        target = windows[0]
+        try:
+            if wanted == "focus":
+                return self._focus(target)
+            if wanted in ("minimize", "minimise"):
+                target.minimize()
+                return f"Minimised '{target.title}'."
+            if wanted in ("maximize", "maximise"):
+                target.maximize()
+                return f"Maximised '{target.title}'."
+            target.close()
+            return f"Closed '{target.title}'."
+        except Exception as e:
+            return f"Could not {wanted} '{target.title}': {e}"
+
+    @staticmethod
+    def _focus(target) -> str:
+        try:
+            if getattr(target, "isMinimized", False):
+                target.restore()
+            target.activate()
+            return f"Focused window: '{target.title}'."
+        except Exception:
+            # pygetwindow.activate() throws intermittently on Windows; the
+            # minimize→restore toggle reliably forces the window forward.
+            target.minimize()
+            target.restore()
+            return f"Focused window: '{target.title}'."
+
+    @method_job(confirms={"write", "set", "copy"})
     @capture_response
-    def get_clipboard(self) -> str:
+    def clipboard(self, action: str = "read", text: str = "") -> str:
         """
-        [DESKTOP JOB] Reads and returns the current clipboard content.
+        [DESKTOP JOB] Reads what is on the clipboard, or puts text on it.
+        Writing requires modules.desktop.allow_actions to be enabled in config.
+
+        Args:
+            action (str): "read" (the default) or "write".
+            text (str): What to copy. (required when writing)
 
         Returns:
-            str: Current clipboard text content.
+            str: The clipboard contents, or confirmation of the copy.
         """
         import pyperclip
 
-        text = pyperclip.paste()
+        wanted = (action or "read").strip().lower()
+
+        if wanted in ("read", "get", "show"):
+            current = pyperclip.paste()
+            if not current:
+                return "Clipboard is empty."
+            preview = current[:_CLIPBOARD_PREVIEW_CHARS]
+            suffix = (
+                f"\n[… {len(current) - _CLIPBOARD_PREVIEW_CHARS} more chars]"
+                if len(current) > _CLIPBOARD_PREVIEW_CHARS
+                else ""
+            )
+            return f"Clipboard content:\n{preview}{suffix}"
+
+        if wanted not in ("write", "set", "copy"):
+            return f"Unknown action '{action}'. Use read or write."
+
+        blocked = _require_actions("clipboard write")
+        if blocked:
+            return blocked
         if not text:
-            return "Clipboard is empty."
-        preview = text[:500]
-        suffix = f"\n[… {len(text) - 500} more chars]" if len(text) > 500 else ""
-        return f"Clipboard content:\n{preview}{suffix}"
+            return "Error: No text to copy."
+
+        pyperclip.copy(text)
+        preview = text[:80] + ("…" if len(text) > 80 else "")
+        return f"Copied to clipboard: '{preview}'"
 
     @method_job
     @capture_response
@@ -242,115 +342,167 @@ class Desktop:
         suffix = f"\n(Showing first {max_results}; there may be more.)" if len(matches) == max_results else ""
         return f"Found {len(matches)} match(es) for '{name}':\n" + "\n".join(f"  {p}" for p in matches) + suffix
 
-    # ------------------------------------------------------------------ action-gated
-
-    @method_job
+    @method_job(confirms={"write", "append"})
     @capture_response
-    def focus_window(self, title: str) -> str:
+    def file(self, action: str = "read", path: str = "", content: str = "", offset: int = 0) -> str:
         """
-        [DESKTOP JOB] Brings a window to the foreground and gives it focus.
-        Matches by partial title (case-insensitive).
+        [DESKTOP JOB] Reads a text file's contents, writes or appends text to one, or
+        lists what is in a folder. Writing and appending require
+        modules.desktop.allow_actions to be enabled in config.
 
         Args:
-            title (str): Partial window title to match (case-insensitive). (required)
+            action (str): "read" (the default), "write", "append" or "list".
+            path (str): The file or folder. A bare filename is looked for on the
+                Desktop, in Documents and Downloads, in the home folder and the
+                current directory. Writing needs a full path. (required)
+            content (str): The text to write or append. (required for write and append)
+            offset (int): Where to start reading, in characters. Use it to read the
+                next part of a file that was cut short.
 
         Returns:
-            str: Confirmation or error message.
+            str: The file's text, the folder listing, or confirmation of the write.
         """
-        import pygetwindow as gw
-
-        needle = title.lower()
-        windows = [w for w in gw.getAllWindows() if needle in w.title.lower()]
-        if not windows:
-            return f"No window found matching '{title}'."
-
-        target = windows[0]
-        try:
-            if getattr(target, "isMinimized", False):
-                target.restore()
-            target.activate()
-            return f"Focused window: '{target.title}'."
-        except Exception:
-            # pygetwindow.activate() throws intermittently on Windows; the
-            # minimize→restore toggle reliably forces the window forward.
-            try:
-                target.minimize()
-                target.restore()
-                return f"Focused window: '{target.title}'."
-            except Exception as e:
-                return f"Could not focus '{target.title}': {e}"
-
-    @method_job
-    @capture_response
-    def open_app(self, name: str) -> str:
-        """
-        [DESKTOP JOB] Opens an application by name using the Windows shell.
-        Works for app names known to Windows (e.g. 'notepad', 'chrome', 'spotify', 'calculator').
-        Requires modules.desktop.allow_actions to be enabled in config.
-
-        Args:
-            name (str): Application name or executable path to open. (required)
-
-        Returns:
-            str: Confirmation or error.
-        """
-        blocked = _require_actions("open_app")
-        if blocked:
-            return blocked
-
-        if not name:
-            return "Error: No application name provided."
-
-        # Resolve to a concrete executable BEFORE launching. Handing a bare
-        # name to ShellExecute/start pops a premature "cannot find" dialog and
-        # reports failure even when the app opens moments later. Resolving up
-        # front means a single, final success/error.
-        exe = _resolve_executable(name)
-        if exe is None:
-            return (
-                f"Error: Could not find an application named '{name}'. "
-                "Provide the full path to its .exe, or check the name."
-            )
-
-        try:
-            subprocess.Popen([exe])
-            return f"Opening '{name}'."
-        except Exception as e:
-            return f"Error opening '{name}': {e}"
-
-    @method_job
-    @capture_response
-    def open_file(self, path: str) -> str:
-        """
-        [DESKTOP JOB] Opens a file with its default application (like double-clicking it).
-        Requires modules.desktop.allow_actions to be enabled in config.
-
-        Args:
-            path (str): Full path OR just a filename (with or without extension).
-                Bare names are resolved against Desktop, Documents, Downloads,
-                home, and the current directory (incl. OneDrive-redirected
-                folders). (required)
-
-        Returns:
-            str: Confirmation or error.
-        """
-        blocked = _require_actions("open_file")
-        if blocked:
-            return blocked
-
+        wanted = (action or "read").strip().lower()
         if not path:
-            return "Error: No file path provided."
+            return "Error: Which file?"
 
+        if wanted in ("read", "cat", "show"):
+            return self._read_file(path, offset)
+        if wanted in ("list", "ls", "dir"):
+            return self._list_dir(path)
+        if wanted not in ("write", "save", "append", "add"):
+            return f"Unknown action '{action}'. Use read, write, append or list."
+
+        blocked = _require_actions(f"file {wanted}")
+        if blocked:
+            return blocked
+        if not content:
+            return "Error: No text to write."
+        return self._write_file(path, content, append=wanted in ("append", "add"))
+
+    @staticmethod
+    def _read_file(path: str, offset: int) -> str:
         resolved, matches = _resolve_file(path)
         if resolved is None:
             if matches:
                 listing = "\n".join(f"  {m}" for m in matches[:20])
+                return f"Ambiguous: multiple files match '{path}':\n{listing}"
+            return f"Error: No file called '{path}'."
+        if os.path.isdir(resolved):
+            return Desktop._list_dir(resolved)
+
+        try:
+            with open(resolved, "r", encoding="utf-8") as handle:
+                text = handle.read()
+        except UnicodeDecodeError:
+            return f"'{resolved}' isn't a text file."
+        except OSError as e:
+            return f"Error reading {resolved}: {e}"
+
+        start = max(0, int(offset or 0))
+        if start >= len(text) and text:
+            return f"{resolved} has only {len(text)} characters — nothing at offset {start}."
+
+        page = text[start:start + _MAX_FILE_CHARS]
+        if not page:
+            return f"{resolved} is empty."
+        end = start + len(page)
+        suffix = (
+            f"\n\n[Characters {start}–{end} of {len(text)}. "
+            f"Read on with offset={end}.]"
+            if end < len(text) else ""
+        )
+        return f"{resolved}:\n{page}{suffix}"
+
+    @staticmethod
+    def _list_dir(path: str) -> str:
+        folder = os.path.expanduser(path)
+        if not os.path.isdir(folder):
+            return f"Error: '{path}' is not a folder."
+        try:
+            entries = sorted(os.listdir(folder))
+        except OSError as e:
+            return f"Error listing {folder}: {e}"
+        if not entries:
+            return f"{folder} is empty."
+
+        lines = []
+        for entry in entries[:_MAX_DIR_ENTRIES]:
+            marker = "/" if os.path.isdir(os.path.join(folder, entry)) else ""
+            lines.append(f"  {entry}{marker}")
+        suffix = (
+            f"\n(Showing {_MAX_DIR_ENTRIES} of {len(entries)}.)"
+            if len(entries) > _MAX_DIR_ENTRIES else ""
+        )
+        return f"{folder} ({len(entries)} item(s)):\n" + "\n".join(lines) + suffix
+
+    @staticmethod
+    def _write_file(path: str, content: str, append: bool) -> str:
+        target = os.path.abspath(os.path.expanduser(path))
+        folder = os.path.dirname(target)
+        if folder and not os.path.isdir(folder):
+            return f"Error: the folder '{folder}' does not exist."
+
+        existed = os.path.exists(target)
+        try:
+            with open(target, "a" if append else "w", encoding="utf-8") as handle:
+                handle.write(content)
+        except OSError as e:
+            return f"Error writing {target}: {e}"
+
+        if append:
+            return f"Added {len(content)} characters to {target}."
+        return f"{'Overwrote' if existed else 'Wrote'} {target} ({len(content)} characters)."
+
+    # ------------------------------------------------------------------ action-gated
+
+    @method_job
+    @capture_response
+    def open(self, target: str) -> str:
+        """
+        [DESKTOP JOB] Opens something on this computer — an application by name
+        ('notepad', 'chrome', 'spotify'), or a file or folder, which opens in whatever
+        program normally handles it.
+        Requires modules.desktop.allow_actions to be enabled in config.
+
+        Args:
+            target (str): An application name, or a full path, or just a filename
+                (with or without its extension). Bare filenames are looked for on the
+                Desktop, in Documents and Downloads, in the home folder and the current
+                directory, including their OneDrive-redirected versions. (required)
+
+        Returns:
+            str: Confirmation or error.
+        """
+        blocked = _require_actions("open")
+        if blocked:
+            return blocked
+
+        if not target:
+            return "Error: Nothing to open."
+
+        # Applications first: a bare "spotify" means the app, not a stray file
+        # of that name. Resolve to a concrete executable BEFORE launching —
+        # handing a bare name to ShellExecute pops a premature "cannot find"
+        # dialog and reports failure even when the app opens moments later.
+        exe = _resolve_executable(target)
+        if exe is not None and os.path.splitext(exe)[1].lower() == ".exe":
+            try:
+                subprocess.Popen([exe])
+                return f"Opening '{target}'."
+            except Exception as e:
+                return f"Error opening '{target}': {e}"
+
+        resolved, matches = _resolve_file(target)
+        if resolved is None:
+            if matches:
+                listing = "\n".join(f"  {m}" for m in matches[:20])
                 return (
-                    f"Ambiguous: multiple files match '{path}'. "
+                    f"Ambiguous: multiple files match '{target}'. "
                     f"Specify a full path:\n{listing}"
                 )
             return (
-                f"Error: File not found: '{path}'. "
+                f"Error: Could not find an app or file called '{target}'. "
                 f"Searched: {', '.join(_known_dirs())}"
             )
 
@@ -360,30 +512,7 @@ class Desktop:
         except Exception as e:
             return f"Error opening file: {e}"
 
-    @method_job
-    @capture_response
-    def set_clipboard(self, text: str) -> str:
-        """
-        [DESKTOP JOB] Sets the clipboard to the given text.
-        Requires modules.desktop.allow_actions to be enabled in config.
-
-        Args:
-            text (str): Text to place in the clipboard. (required)
-
-        Returns:
-            str: Confirmation.
-        """
-        blocked = _require_actions("set_clipboard")
-        if blocked:
-            return blocked
-
-        import pyperclip
-
-        pyperclip.copy(text)
-        preview = text[:80] + ("…" if len(text) > 80 else "")
-        return f"Copied to clipboard: '{preview}'"
-
-    @method_job
+    @method_job(confirms=True)
     @capture_response
     def type_text(self, text: str) -> str:
         """
@@ -405,15 +534,32 @@ class Desktop:
         import pyperclip
 
         try:
-            pyperclip.copy(text)
-            pyautogui.hotkey("ctrl", "v")
+            if text.isascii():
+                # pyautogui.write() types the keys directly. The clipboard route
+                # below is only needed for characters no key produces, and using
+                # it for everything silently threw away whatever the user had
+                # copied.
+                pyautogui.write(text)
+            else:
+                try:
+                    previous = pyperclip.paste()
+                except Exception:
+                    previous = None
+                pyperclip.copy(text)
+                pyautogui.hotkey("ctrl", "v")
+                if previous is not None:
+                    # Paste is asynchronous in the target app; restoring
+                    # immediately can beat it to the clipboard.
+                    import time
+                    time.sleep(0.2)
+                    pyperclip.copy(previous)
         except Exception as e:
             return f"Error typing text: {e}"
 
         preview = text[:60] + ("…" if len(text) > 60 else "")
         return f"Typed: '{preview}'"
 
-    @method_job
+    @method_job(confirms=True)
     @capture_response
     def click_at(self, x: int, y: int) -> str:
         """
@@ -439,3 +585,58 @@ class Desktop:
             return f"Clicked at ({x}, {y})."
         except Exception as e:
             return f"Error clicking at ({x}, {y}): {e}"
+
+    @method_job(confirms=True)
+    @capture_response
+    def click_text(self, text: str, double: bool = False) -> str:
+        """
+        [DESKTOP JOB] Finds words on the screen and clicks them, so a button or a link
+        can be pressed by name instead of by pixel coordinates.
+        Requires modules.desktop.allow_actions to be enabled in config.
+
+        Args:
+            text (str): The words to click, as they appear on screen. (required)
+            double (bool): Double-click instead of clicking once.
+
+        Returns:
+            str: What was clicked, or why nothing was.
+        """
+        blocked = _require_actions("click_text")
+        if blocked:
+            return blocked
+        if not text:
+            return "Error: What should I click?"
+
+        from helpers.screenReader import ScreenReader
+
+        try:
+            screenshot = ScreenReader.take_screenshot(target="main")
+        except ImportError:
+            return (
+                "I can't see the screen — screen capture isn't installed. "
+                "Run: pip install -r requirements/desktop.txt"
+            )
+
+        matches = ScreenReader.find_text_matches(screenshot, text)
+        if not matches:
+            return f"I couldn't find '{text}' on the screen."
+
+        # Several regions read as the same words, so there is no way to know
+        # which one was meant — and a click is not undoable. Say so instead.
+        if len(matches) > 1:
+            captions = ", ".join(f"'{m['caption']}'" for m in matches[:5])
+            return (
+                f"'{text}' appears {len(matches)} times on screen ({captions}), "
+                "so I didn't click anything. Tell me which one you mean."
+            )
+
+        import pyautogui
+
+        x, y = _box_center(matches[0]["box"])
+        try:
+            pyautogui.click(x, y, clicks=2 if double else 1)
+        except Exception as e:
+            return f"Error clicking '{text}' at ({x}, {y}): {e}"
+
+        verb = "Double-clicked" if double else "Clicked"
+        return f"{verb} '{matches[0]['caption']}' at ({x}, {y})."

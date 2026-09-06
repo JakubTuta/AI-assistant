@@ -62,25 +62,60 @@ def _drives() -> typing.List[str]:
     return [f"{letter}:\\" for letter in "CDEFGH" if os.path.isdir(f"{letter}:\\")]
 
 
+@register_job(
+    module_name="league",
+    requires=_LEAGUE_REQ,
+    summary="Launch, close or auto-accept LoL",
+    confirms={"close", "quit", "exit"},
+)
 @capture_response
-@register_job(module_name="league", requires=_LEAGUE_REQ, summary="Auto-accept LoL queue")
-def accept_game() -> str:
+def league(action: str = "launch") -> str:
     """
-    [GAME AUTOMATION JOB] Monitors the screen for a League of Legends queue pop-up and clicks Accept.
-    Runs in the background; stops automatically once accepted or after 30 minutes.
+    [LEAGUE OF LEGENDS JOB] Starts the League of Legends client, closes it, or watches
+    the screen for a queue pop-up and clicks Accept for you. Watching runs in the
+    background and stops on its own once a game is accepted or after 30 minutes.
+
+    Args:
+        action (str): "launch" (the default), "close" or "auto_accept".
 
     Returns:
-        str: Confirmation that monitoring started.
+        str: Confirmation of what is happening.
     """
+    wanted = (action or "launch").strip().lower()
+    if wanted in ("launch", "open", "start", "queue_up"):
+        return _launch()
+    if wanted in ("close", "quit", "exit"):
+        return _close()
+    if wanted in ("auto_accept", "accept", "watch"):
+        return _auto_accept()
+    return f"Unknown action '{action}'. Use launch, close or auto_accept."
+
+
+def _auto_accept() -> str:
     if BackgroundJobs.is_running(_ACCEPT_JOB):
         return "Already watching for queue pop-up."
 
+    # Shares ScreenReader's matching with desktop.click_text but not the job:
+    # click_text is gated on modules.desktop.allow_actions, and enabling the
+    # league module is already the user asking for this one click. Routing
+    # through it would break auto-accept for anyone who never wanted general
+    # desktop control.
     def _watch():
         mouse_controller = MouseController()
         deadline = time.time() + _MAX_ACCEPT_MINUTES * 60
         while time.time() < deadline:
-            screenshot = ScreenReader.take_screenshot(gray=True, target="main")
-            accept_object = ScreenReader.find_text_in_screenshot(screenshot, "Accept!")
+            try:
+                screenshot = ScreenReader.take_screenshot(gray=True, target="main")
+                accept_object = ScreenReader.find_text_in_screenshot(screenshot, "Accept!")
+            except Exception as e:
+                # This runs on a background thread, so an unhandled error here
+                # just ends the watch with the user still expecting it to fire.
+                # The usual cause is no OCR backend: a provider without vision
+                # falls through to easyocr, which may not be installed.
+                logger.log_error(str(e), "league.auto_accept")
+                notify(f"Stopped watching for the queue pop-up: {e}", kind="error", source="league")
+                BackgroundJobs.stop(_ACCEPT_JOB)
+                return
             if accept_object is not None:
                 mouse_controller.go_to_center_of_bbox(accept_object)
                 mouse_controller.click_left_button()
@@ -91,21 +126,18 @@ def accept_game() -> str:
                 return
             time.sleep(5)
         logger.log_system_event("league_accept", f"No queue pop-up found after {_MAX_ACCEPT_MINUTES} minutes.")
+        notify(
+            f"No queue pop-up found after {_MAX_ACCEPT_MINUTES} minutes — no longer watching.",
+            kind="info",
+            source="league",
+        )
         BackgroundJobs.stop(_ACCEPT_JOB)
 
     BackgroundJobs.start(_ACCEPT_JOB, _watch)
     return "Watching for queue pop-up (auto-stops after 30 min or when accepted)."
 
 
-@capture_response
-@register_job(module_name="league", requires=_LEAGUE_REQ, summary="Launch League of Legends")
-def queue_up() -> str:
-    """
-    [APPLICATION LAUNCHER JOB] Launches the League of Legends game client.
-
-    Returns:
-        str: Success or error message.
-    """
+def _launch() -> str:
     launcher = _find_league()
     if launcher is None:
         return (
@@ -116,14 +148,6 @@ def queue_up() -> str:
     return "League of Legends launched."
 
 
-@capture_response
-@register_job(module_name="league", requires=_LEAGUE_REQ, summary="Close League of Legends")
-def close_game() -> str:
-    """
-    [APPLICATION TERMINATION JOB] Forcefully closes the League of Legends client.
-
-    Returns:
-        str: Confirmation message.
-    """
+def _close() -> str:
     os.system("taskkill /f /im LeagueClientUx.exe")
     return "Sent close signal to League of Legends."

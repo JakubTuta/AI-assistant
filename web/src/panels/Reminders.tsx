@@ -52,7 +52,7 @@ export function Reminders() {
 
   const cancel = (id: string) => {
     setBusy(id);
-    invokeJob('cancel_reminder', { id_or_text: id }).finally(() => {
+    invokeJob('manage_reminders', { action: 'cancel', id_or_text: id }).finally(() => {
       setBusy(null);
       refresh();
     });

@@ -7,6 +7,7 @@ that could take over a built-in job's name.
 
 Run directly: python tests/test_audit_regressions.py
 """
+import datetime
 import os
 import sys
 import tempfile
@@ -141,7 +142,11 @@ class TestPanels(unittest.TestCase):
 
         # What each panel actually calls. Checked against the module rather
         # than the registry, which is only populated once modules have loaded.
-        free_functions = {"weather": "snapshot", "home_assistant": "snapshot"}
+        free_functions = {
+            "weather": "snapshot",
+            "home_assistant": "snapshot",
+            "notes": "snapshot",
+        }
         methods = {
             "calendar": "agenda_snapshot",
             "spotify": "playback_snapshot",
@@ -360,6 +365,876 @@ class TestImageMimeMatchesEncoding(unittest.TestCase):
         self.assertIsNotNone(encoded)
         self.assertEqual(IMAGE_MIME_TYPE, "image/png")
         self.assertTrue(base64.b64decode(encoded).startswith(b"\x89PNG\r\n\x1a\n"))
+
+
+class TestScreenTextSentinel(unittest.TestCase):
+    def test_not_found_sentinel_is_not_a_box(self) -> None:
+        """The model is told to answer [0, 0, 0, 0] when the text is not on
+        screen. A non-empty list is truthy, so the sentinel used to be scaled
+        into a box at the origin: league's auto-accept moved to (0, 0), clicked
+        whatever was there, and announced "Game accepted.\""""
+        from helpers.screenReader import _is_real_box
+
+        self.assertFalse(_is_real_box([0, 0, 0, 0]))
+        self.assertFalse(_is_real_box([100, 200, 100, 400]))  # zero height
+        self.assertFalse(_is_real_box([100, 200, 300, 200]))  # zero width
+        self.assertFalse(_is_real_box(None))
+        self.assertFalse(_is_real_box([1, 2, 3]))
+        self.assertTrue(_is_real_box([120, 340, 180, 620]))
+
+    def test_anthropic_counts_as_a_vision_provider(self) -> None:
+        """find_text_in_screenshot goes through the provider-agnostic
+        send_message(image=...), so restricting it to Gemini sent Anthropic
+        users down the easyocr path — and its extra dependency — for nothing."""
+        from unittest import mock
+
+        from helpers.screenReader import ScreenReader
+
+        for provider, expected in (
+            ("anthropic", True), ("gemini", True), ("ollama", False),
+        ):
+            with mock.patch("helpers.model.get_model", return_value=(provider, "m")):
+                with self.subTest(provider=provider):
+                    self.assertEqual(ScreenReader._vision_capable(), expected)
+
+
+class TestMcpInstallGate(unittest.TestCase):
+    """manage_mcp_server starts a process of the caller's choosing with the
+    user's privileges. It shipped with no gate at all, while sending an email
+    had one."""
+
+    def setUp(self) -> None:
+        from helpers.config import Config
+
+        Config.load(os.path.join(_REPO_ROOT, "config.example.yaml"))
+        assert Config._settings is not None
+        self.settings = Config._settings
+
+    def test_add_refuses_and_echoes_the_command(self) -> None:
+        from unittest import mock
+
+        from modules import mcp
+
+        self.settings.modules.mcp.allow_install = False
+        with mock.patch("helpers.memory_db.get_mcp_server", return_value=None), \
+                mock.patch("helpers.memory_db.upsert_mcp_server") as upsert, \
+                mock.patch.object(mcp, "_client") as client:
+            client.return_value.all_connected.return_value = []
+            result = mcp.manage_mcp_server(
+                action="add", name="evil", command="curl", args='["evil.sh"]'
+            )
+
+        upsert.assert_not_called()
+        self.assertIn("disabled", result)
+        self.assertIn("curl evil.sh", result)
+
+    def test_connect_is_gated_too(self) -> None:
+        """Connecting spawns the same process 'add' does; gating only 'add'
+        would leave a stored server one word away from running."""
+        from unittest import mock
+
+        from modules import mcp
+
+        self.settings.modules.mcp.allow_install = False
+        record = {"name": "srv", "transport": "stdio", "command": "npx", "args": "[]"}
+        with mock.patch("helpers.memory_db.get_mcp_server", return_value=record), \
+                mock.patch.object(mcp, "_client") as client:
+            client.return_value.all_connected.return_value = []
+            result = mcp.manage_mcp_server(action="connect", name="srv")
+            client.return_value.connect_server.assert_not_called()
+
+        self.assertIn("disabled", result)
+
+    def test_disabling_a_server_stays_ungated(self) -> None:
+        """The gate guards starting processes, not stopping them."""
+        from unittest import mock
+
+        from modules import mcp
+
+        self.settings.modules.mcp.allow_install = False
+        record = {"name": "srv", "transport": "stdio", "command": "npx", "args": "[]"}
+        with mock.patch("helpers.memory_db.get_mcp_server", return_value=record), \
+                mock.patch("helpers.memory_db.upsert_mcp_server") as upsert, \
+                mock.patch.object(mcp, "_client") as client:
+            client.return_value.all_connected.return_value = []
+            result = mcp.manage_mcp_server(action="edit", name="srv", enabled="false")
+
+        upsert.assert_called_once()
+        self.assertIn("Updated", result)
+
+    def test_transport_can_return_to_stdio(self) -> None:
+        """The edit branch read `transport != "stdio"` while the parameter
+        defaulted to "stdio", so a server moved to http could never be moved
+        back."""
+        from unittest import mock
+
+        from modules import mcp
+
+        self.settings.modules.mcp.allow_install = True
+        record = {"name": "srv", "transport": "http", "url": "http://x", "args": "[]"}
+        with mock.patch("helpers.memory_db.get_mcp_server", return_value=record), \
+                mock.patch("helpers.memory_db.upsert_mcp_server") as upsert, \
+                mock.patch.object(mcp, "_client") as client:
+            client.return_value.all_connected.return_value = []
+            mcp.manage_mcp_server(action="edit", name="srv", transport="stdio")
+
+        self.assertEqual(upsert.call_args.args[0]["transport"], "stdio")
+
+
+class TestGmailWriteGate(unittest.TestCase):
+    def test_every_mailbox_write_checks_the_gate(self) -> None:
+        """send/reply/delete checked modules.gmail.allow_write; marking read and
+        the draft delete did not, so switching the gate off still let Wony
+        change the mailbox. modify_emails now checks it once for every state
+        change, which is why the merge was worth doing."""
+        import inspect
+
+        from modules import gmail
+
+        for name in ("modify_emails", "send_email", "manage_drafts"):
+            with self.subTest(job=name):
+                source = inspect.getsource(getattr(gmail.Gmail, name))
+                self.assertIn("_write_allowed", source)
+
+
+class TestDesktopActionGate(unittest.TestCase):
+    def test_focusing_a_window_is_gated(self) -> None:
+        """focus_window sat under the "action-gated" banner without the check,
+        so it moved windows around with allow_actions off. manage_window now
+        gates every action but listing at one site, which is the point."""
+        from unittest import mock
+
+        from helpers.config import Config
+        from modules import desktop
+
+        Config.load(os.path.join(_REPO_ROOT, "config.example.yaml"))
+        assert Config._settings is not None
+        Config._settings.modules.desktop.allow_actions = False
+
+        gw = mock.MagicMock()
+        gw.getAllWindows.return_value = []
+        with mock.patch.dict(sys.modules, {"pygetwindow": gw}):
+            instance = desktop.Desktop.__new__(desktop.Desktop)
+            for action in ("focus", "minimize", "maximize", "close"):
+                with self.subTest(action=action):
+                    result = desktop.Desktop.manage_window(instance, action, "notepad")
+                    self.assertIn("disabled", result)
+            # Listing stays open: it changes nothing.
+            self.assertIn("No visible windows", desktop.Desktop.manage_window(instance))
+
+    def test_ascii_typing_leaves_the_clipboard_alone(self) -> None:
+        """type_text pasted everything through the clipboard, including plain
+        ASCII, silently destroying whatever the user had copied."""
+        from unittest import mock
+
+        from helpers.config import Config
+        from modules import desktop
+
+        Config.load(os.path.join(_REPO_ROOT, "config.example.yaml"))
+        assert Config._settings is not None
+        Config._settings.modules.desktop.allow_actions = True
+
+        pyautogui = mock.MagicMock()
+        pyperclip = mock.MagicMock()
+        pyperclip.paste.return_value = "user's own clipboard"
+        with mock.patch.dict(
+            sys.modules, {"pyautogui": pyautogui, "pyperclip": pyperclip}
+        ):
+            desktop.Desktop.type_text(desktop.Desktop.__new__(desktop.Desktop), "hello")
+
+        pyautogui.write.assert_called_once_with("hello")
+        pyperclip.copy.assert_not_called()
+
+
+class TestModuleRetry(unittest.TestCase):
+    def test_a_missing_pip_package_is_retryable(self) -> None:
+        """A missing package yields UNAVAILABLE, which the retry list left out —
+        so `pip install` never took effect until the whole app restarted. That is
+        nine of the optional modules."""
+        from helpers.registry import ModuleStatus, ServiceRegistry
+
+        original_pending = dict(ServiceRegistry._reinit_pending)
+        original_status = dict(ServiceRegistry._module_status)
+        try:
+            ServiceRegistry._reinit_pending["fake_mod"] = {"kind": "jobs", "items": []}
+            ServiceRegistry._module_status["fake_mod"] = (
+                ModuleStatus.UNAVAILABLE, "pip module not installed: nope"
+            )
+            self.assertIn("fake_mod", ServiceRegistry.get_retryable_modules())
+        finally:
+            ServiceRegistry._reinit_pending.clear()
+            ServiceRegistry._reinit_pending.update(original_pending)
+            ServiceRegistry._module_status.clear()
+            ServiceRegistry._module_status.update(original_status)
+
+    def test_requirement_check_drops_stale_import_caches(self) -> None:
+        """find_spec answers from cached directory listings, so a package
+        installed into the running process stayed invisible and the retry was
+        cosmetic."""
+        import inspect
+
+        from helpers import requirements
+
+        self.assertIn("invalidate_caches", inspect.getsource(requirements.evaluate))
+
+
+class TestMcpLiveness(unittest.TestCase):
+    def test_a_dead_session_is_not_reported_as_connected(self) -> None:
+        """When a server's coroutine unwound, the session stayed in _sessions:
+        all_connected() kept listing it while every tool call raised "is not
+        connected"."""
+        from helpers import mcp_client
+
+        alive = mcp_client.MCPServerSession("alive", {})
+        dead = mcp_client.MCPServerSession("dead", {})
+        dead._closed.set()
+
+        original = dict(mcp_client._sessions)
+        try:
+            mcp_client._sessions.clear()
+            mcp_client._sessions.update({"alive": alive, "dead": dead})
+            self.assertEqual(mcp_client.all_connected(), ["alive"])
+        finally:
+            mcp_client._sessions.clear()
+            mcp_client._sessions.update(original)
+
+
+class TestMissedReminders(unittest.TestCase):
+    def test_a_missed_timer_still_runs_its_action(self) -> None:
+        """Restoring a due timer built a 3-tuple of (id, label, time) and deleted
+        the row, so the action was destroyed before anything could run it: "turn
+        the lights off at 23:00" did nothing at all if the PC had been asleep."""
+        from unittest import mock
+
+        from modules.scheduler import Scheduler
+
+        sched = Scheduler.__new__(Scheduler)
+        sched._reminders = {}
+        due = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        meta = {
+            "id": "abc",
+            "text": "lights off",
+            "trigger_type": "date",
+            "action": {"job": "control_home_device", "args": {"target": "lamp"}},
+        }
+
+        with mock.patch.object(Scheduler, "_run_action") as run_action, \
+                mock.patch("helpers.notify.notify"), \
+                mock.patch("helpers.memory_db.delete_reminder"):
+            sched._fire_missed_reminder(meta, due)
+
+        run_action.assert_called_once_with(meta["action"])
+
+    def test_a_long_stale_action_asks_instead_of_acting(self) -> None:
+        """Running "lights off" ten hours late is a surprise, not a service."""
+        from unittest import mock
+
+        from modules.scheduler import Scheduler
+
+        sched = Scheduler.__new__(Scheduler)
+        sched._reminders = {}
+        due = datetime.datetime.now() - datetime.timedelta(hours=10)
+        meta = {
+            "id": "abc",
+            "text": "lights off",
+            "trigger_type": "date",
+            "action": {"job": "control_home_device", "args": {}},
+        }
+
+        with mock.patch.object(Scheduler, "_run_action") as run_action, \
+                mock.patch("modules.scheduler.notify") as notify, \
+                mock.patch("helpers.memory_db.delete_reminder"):
+            sched._fire_missed_reminder(meta, due)
+
+        run_action.assert_not_called()
+        self.assertIn("Want me to do it now?", notify.call_args.args[0])
+
+
+class TestSpotifyTokenPersistence(unittest.TestCase):
+    def test_a_refreshed_token_is_written_back(self) -> None:
+        """_refresh_access_token updated only the in-memory token, so the cached
+        expiry stayed permanently in the past and every process start burned a
+        refresh round-trip."""
+        import inspect
+
+        from modules import spotify
+
+        source = inspect.getsource(spotify.Spotify._refresh_access_token)
+        self.assertIn("_save_tokens", source)
+
+
+class TestCalendarAmbiguity(unittest.TestCase):
+    def test_edit_refuses_an_ambiguous_match_like_delete_does(self) -> None:
+        """delete_event guarded on len(events) > 1; edit_event took events[0], so
+        "move the standup" rewrote whichever standup came back first."""
+        import inspect
+
+        from modules import calendar as cal
+
+        for name in ("_edit_event", "_delete_event"):
+            with self.subTest(job=name):
+                self.assertIn(
+                    "_resolve_one_event",
+                    inspect.getsource(getattr(cal.Calendar, name)),
+                )
+
+    def test_the_resolver_reports_both_failures(self) -> None:
+        from unittest import mock
+
+        from modules import calendar as cal
+
+        service = cal.Calendar.__new__(cal.Calendar)
+        two = [{"id": "1", "summary": "standup"}, {"id": "2", "summary": "standup"}]
+        with mock.patch.object(cal.Calendar, "_parse_date", return_value=None), \
+                mock.patch.object(cal.Calendar, "_fetch_events_range", return_value=two):
+            event, problem = service._resolve_one_event("standup", "", "primary")
+        self.assertIsNone(event)
+        self.assertIn("Be more specific", problem)
+
+        with mock.patch.object(cal.Calendar, "_parse_date", return_value=None), \
+                mock.patch.object(cal.Calendar, "_fetch_events_range", return_value=[]):
+            event, problem = service._resolve_one_event("standup", "", "primary")
+        self.assertIsNone(event)
+        self.assertEqual(problem, "No matching event found.")
+
+
+class TestRecallLimit(unittest.TestCase):
+    def test_a_day_lookup_honours_the_limit(self) -> None:
+        """recall(date=...) accepted a limit and then ignored it, so "what did we
+        talk about on Tuesday" returned every exchange of that day."""
+        import inspect
+
+        from helpers import memory_db
+
+        self.assertIn("limit", inspect.signature(memory_db.turns_on_date).parameters)
+        self.assertIn("turns_on_date(date, limit=", inspect.getsource(__import__(
+            "modules.ai", fromlist=["AI"]).AI.recall))
+
+
+class TestTavilyFallbackIsVisible(unittest.TestCase):
+    def test_a_failed_tavily_search_is_reported(self) -> None:
+        """The fallback to DuckDuckGo swallowed the exception, so a bad
+        TAVILY_API_KEY looked exactly like a working one."""
+        from unittest import mock
+
+        from modules import web
+
+        with mock.patch.dict(os.environ, {"TAVILY_API_KEY": "bad"}), \
+                mock.patch.object(web, "_tavily_search", side_effect=RuntimeError("401")), \
+                mock.patch.object(web, "_ddg_search", return_value=[]) as ddg, \
+                mock.patch("helpers.diagnostics.add") as diag:
+            web._do_search("anything")
+
+        ddg.assert_called_once()
+        self.assertTrue(
+            any("Tavily" in str(call) for call in diag.call_args_list), diag.call_args_list
+        )
+
+
+class TestOneTurnPath(unittest.TestCase):
+    """The agent turn existed twice — helpers/web_app._run_web_turn and
+    modules/employer.job_on_command — with comments cross-referencing each
+    other and two different timeouts. Only one of them reset the tool-outcome
+    ledger."""
+
+    def test_both_entry_points_go_through_run_turn(self) -> None:
+        import inspect
+
+        from helpers import web_app
+        from modules.employer import Employer
+
+        self.assertIn("run_turn", inspect.getsource(Employer.job_on_command))
+        self.assertIn("run_turn", inspect.getsource(web_app.build_app))
+
+    def test_the_ledger_starts_empty_on_every_turn(self) -> None:
+        """_tool_outcomes is process-wide. Web turns never reset it, so in a
+        headless install it grew without bound and turn_wants_one_message()
+        answered from another turn's tools."""
+        from unittest import mock
+
+        from helpers import decorators
+        from helpers.turn import run_turn
+
+        decorators.record_tool_outcome("stale", quiet=True, ok=True)
+        self.assertTrue(decorators.turn_is_quiet_success())
+
+        seen = {}
+
+        def _fake_agent(**kwargs):
+            from helpers.agent import AgentResult
+
+            seen["ledger"] = list(decorators._tool_outcomes)
+            return AgentResult(text="hi", calls=[])
+
+        with mock.patch("helpers.agent.run_agent", _fake_agent), \
+                mock.patch("helpers.bootstrap.get_ai_client", return_value=None), \
+                mock.patch("modules.ai.build_agent_system_prompt", return_value=""), \
+                mock.patch("helpers.conversation.Conversation.get_messages", return_value=[]):
+            result = run_turn("anything")
+
+        self.assertEqual(result.text, "hi")
+        self.assertEqual(seen["ledger"], [])
+
+    def test_a_failed_turn_comes_back_as_a_sentence(self) -> None:
+        """run_turn never raises: a caller that only wants something to show
+        the user must not have to catch."""
+        from unittest import mock
+
+        from helpers.turn import run_turn
+
+        with mock.patch("helpers.agent.run_agent", side_effect=RuntimeError("boom")), \
+                mock.patch("helpers.bootstrap.get_ai_client", return_value=None), \
+                mock.patch("modules.ai.build_agent_system_prompt", return_value=""), \
+                mock.patch("helpers.diagnostics.add"), \
+                mock.patch("helpers.conversation.Conversation.get_messages", return_value=[]):
+            result = run_turn("anything")
+
+        self.assertTrue(result.error)
+        self.assertIn("boom", result.text)
+        self.assertEqual(result.calls, [])
+
+
+class TestModuleNameDrift(unittest.TestCase):
+    def test_every_module_name_is_a_module_a_user_can_see(self) -> None:
+        """helpers/settings.MODULES had 14 entries against 18 files in modules/.
+        The four absentees survived only because their jobs passed
+        module_name=None — a load-bearing accident that left them with a blank
+        badge in `what can you do` and in the web UI."""
+        from helpers.config import ALWAYS_ON
+        from helpers.registry import ServiceRegistry
+        from helpers.settings import MODULES
+
+        import modules  # noqa: F401  (import triggers discover_services)
+
+        known = {key for key, _, _ in MODULES} | set(ALWAYS_ON)
+
+        used = {
+            module for module in ServiceRegistry.get_job_modules().values()
+            # MCP tools are namespaced per server, not per modules/ file.
+            if module and not module.startswith("mcp:")
+        }
+        self.assertFalse(
+            used - known,
+            "Jobs name modules nothing offers: " + ", ".join(sorted(used - known)),
+        )
+
+    def test_every_offered_module_has_a_file(self) -> None:
+        from helpers.config import ALWAYS_ON
+        from helpers.settings import MODULES
+
+        for name in {key for key, _, _ in MODULES} | set(ALWAYS_ON):
+            with self.subTest(module=name):
+                self.assertTrue(
+                    os.path.exists(os.path.join(_REPO_ROOT, "modules", f"{name}.py")),
+                    f"'{name}' is offered but has no modules/{name}.py.",
+                )
+
+    def test_always_on_modules_are_enabled_whatever_the_config_says(self) -> None:
+        from helpers.config import ALWAYS_ON, Config
+
+        Config.load(os.path.join(_REPO_ROOT, "config.example.yaml"))
+        assert Config._settings is not None
+        original = list(Config._settings.enabled_modules)
+        try:
+            Config._settings.enabled_modules = []
+            for name in ALWAYS_ON:
+                with self.subTest(module=name):
+                    self.assertTrue(Config.is_module_enabled(name))
+        finally:
+            Config._settings.enabled_modules = original
+
+
+class TestConfirmGate(unittest.TestCase):
+    """`_DESTRUCTIVE_JOBS` was a hand-kept set of bare strings in web_app that
+    nothing validated (it still listed "wipe_data", which is an endpoint, not a
+    job), it only reached the UI, and the voice path — the one where a
+    misrecognition picks the wrong recipient — had no confirmation at all."""
+
+    def setUp(self) -> None:
+        from helpers import confirm
+
+        confirm.reset()
+
+    def test_every_confirming_name_is_a_real_job(self) -> None:
+        from helpers.registry import ServiceRegistry
+
+        import modules  # noqa: F401
+
+        jobs = ServiceRegistry.get_all_jobs()
+        confirming = {n for n, v in ServiceRegistry.get_job_confirms().items() if v}
+        # Only the modules this environment could load are registered, so check
+        # the ones that are here rather than demanding the full set.
+        self.assertTrue(confirming, "no job declares confirms=")
+        for name in confirming:
+            with self.subTest(job=name):
+                self.assertIn(name, jobs)
+
+    def test_a_confirming_job_is_refused_until_a_later_turn(self) -> None:
+        """A model that just retries in the same turn must not be able to
+        confirm on the user's behalf — that is the whole gate."""
+        from unittest import mock
+
+        from helpers import confirm
+
+        with mock.patch(
+            "helpers.registry.ServiceRegistry.get_job_confirms",
+            return_value={"delete_it": True},
+        ):
+            confirm.begin_turn()
+            first = confirm.check("delete_it", {"what": "everything"})
+            self.assertIsNotNone(first)
+            # Same turn: still refused.
+            self.assertIsNotNone(confirm.check("delete_it", {"what": "everything"}))
+
+            confirm.begin_turn()
+            self.assertIsNone(confirm.check("delete_it", {"what": "everything"}))
+            # And the confirmation is spent, not standing.
+            self.assertIsNotNone(confirm.check("delete_it", {"what": "everything"}))
+
+    def test_confirming_one_call_does_not_confirm_another(self) -> None:
+        from unittest import mock
+
+        from helpers import confirm
+
+        with mock.patch(
+            "helpers.registry.ServiceRegistry.get_job_confirms",
+            return_value={"delete_it": True},
+        ):
+            confirm.begin_turn()
+            confirm.check("delete_it", {"what": "one email"})
+            confirm.begin_turn()
+            self.assertIsNotNone(confirm.check("delete_it", {"what": "everything"}))
+
+    def test_a_read_only_action_is_not_gated(self) -> None:
+        """The merged jobs default to a read action — listing drafts must not
+        make the user confirm a question."""
+        from unittest import mock
+
+        from helpers import confirm
+
+        with mock.patch(
+            "helpers.registry.ServiceRegistry.get_job_confirms",
+            return_value={"manage_drafts": {"delete"}},
+        ):
+            confirm.begin_turn()
+            self.assertIsNone(confirm.check("manage_drafts", {"action": "list"}))
+            self.assertIsNotNone(confirm.check("manage_drafts", {"action": "delete"}))
+
+
+class TestFrontendJobNames(unittest.TestCase):
+    def test_every_job_the_web_ui_calls_still_exists(self) -> None:
+        """The Tier 2 merges renamed jobs and swept the Python, the docs and the
+        config — but not web/src. The panels went on calling cancel_reminder,
+        set_like and four *_google_account jobs, and /api/invoke answers an
+        unknown name with a message the button drops on the floor."""
+        import re
+
+        web = os.path.join(_REPO_ROOT, "web", "src")
+        if not os.path.isdir(web):
+            self.skipTest("web/src is not present")
+
+        defined = set()
+        modules_dir = os.path.join(_REPO_ROOT, "modules")
+        for entry in os.listdir(modules_dir):
+            if not entry.endswith(".py"):
+                continue
+            with open(os.path.join(modules_dir, entry), encoding="utf-8") as handle:
+                defined.update(re.findall(r"^\s*def (\w+)\(", handle.read(), re.MULTILINE))
+
+        called = set()
+        for folder, _dirs, files in os.walk(web):
+            for name in files:
+                if not name.endswith((".ts", ".tsx")):
+                    continue
+                with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                    called.update(re.findall(r"invokeJob\(\s*'([\w]+)'", handle.read()))
+
+        self.assertTrue(called, "no invokeJob call sites found — did the pattern change?")
+        self.assertFalse(
+            called - defined,
+            "The web UI calls jobs that no longer exist: "
+            + ", ".join(sorted(called - defined)),
+        )
+
+
+class TestScreenTextMatching(unittest.TestCase):
+    """easyocr's captions never equal what the user says, so the old
+    `detection[1].lower() == text.lower()` matched nothing on a real screen —
+    silently, because "not found" is a legitimate answer."""
+
+    @staticmethod
+    def _detection(caption: str):
+        box = [(0, 0), (10, 0), (10, 10), (0, 10)]
+        return (box, caption, 0.99)
+
+    def test_exact_match_is_not_required(self) -> None:
+        from helpers.screenReader import _rank_detections
+
+        found = _rank_detections([self._detection("Accept!")], "accept")
+        self.assertEqual(len(found), 1)
+
+    def test_a_misread_character_still_matches(self) -> None:
+        from helpers.screenReader import _rank_detections
+
+        self.assertTrue(_rank_detections([self._detection("Setlings")], "settings"))
+
+    def test_an_unrelated_word_does_not_match(self) -> None:
+        from helpers.screenReader import _rank_detections
+
+        self.assertFalse(_rank_detections([self._detection("Cancel")], "accept"))
+
+    def test_the_best_tier_wins_outright(self) -> None:
+        """A screen with a real 'Accept' button and the words 'Accepted at
+        12:04' elsewhere is not ambiguous — otherwise click_text would refuse
+        to press anything on a busy screen."""
+        from helpers.screenReader import _rank_detections
+
+        found = _rank_detections(
+            [self._detection("Accepted at 12:04"), self._detection("Accept")], "accept"
+        )
+        self.assertEqual([d[1] for d in found], ["Accept"])
+
+    def test_the_same_words_twice_stay_ambiguous(self) -> None:
+        from helpers.screenReader import _rank_detections
+
+        found = _rank_detections(
+            [self._detection("Delete"), self._detection("delete")], "delete"
+        )
+        self.assertEqual(len(found), 2)
+
+
+class TestClickText(unittest.TestCase):
+    def test_ambiguous_text_clicks_nothing(self) -> None:
+        """Clicking the wrong thing cannot be undone by saying 'no'."""
+        from unittest import mock
+
+        from modules.desktop import Desktop
+
+        box = {"top_left": (0, 0), "bottom_right": (10, 10)}
+        with mock.patch("modules.desktop._actions_allowed", return_value=True), \
+                mock.patch("helpers.screenReader.ScreenReader.take_screenshot",
+                           return_value=object()), \
+                mock.patch("helpers.screenReader.ScreenReader.find_text_matches",
+                           return_value=[{"caption": "Delete", "box": box},
+                                         {"caption": "delete", "box": box}]), \
+                mock.patch("pyautogui.click") as click:
+            result = Desktop.click_text(Desktop.__new__(Desktop), "delete")
+
+        click.assert_not_called()
+        self.assertIn("didn't click", result)
+
+    def test_clicking_is_gated_on_allow_actions(self) -> None:
+        from unittest import mock
+
+        from modules.desktop import Desktop
+
+        with mock.patch("modules.desktop._actions_allowed", return_value=False), \
+                mock.patch("pyautogui.click") as click:
+            result = Desktop.click_text(Desktop.__new__(Desktop), "delete")
+
+        click.assert_not_called()
+        self.assertIn("allow_actions", result)
+
+
+class TestNotes(unittest.TestCase):
+    def setUp(self) -> None:
+        from helpers import memory_db
+
+        self._list = f"test_{os.getpid()}"
+        memory_db.clear_notes(self._list)
+        self.addCleanup(memory_db.clear_notes, self._list)
+
+    def test_an_item_is_removed_by_part_of_its_wording(self) -> None:
+        """The item was dictated ('two pints of milk') and is ticked off by
+        whatever it is called now ('milk')."""
+        from modules import notes
+
+        notes.note("add", "two pints of milk", self._list)
+        self.assertIn("two pints of milk", notes.note("remove", "milk", self._list))
+        self.assertIn("empty", notes.note("list", "", self._list))
+
+    def test_commas_add_several_items(self) -> None:
+        from modules import notes
+
+        notes.note("add", "milk, eggs, bread", self._list)
+        self.assertIn("3 item", notes.note("list", "", self._list))
+
+    def test_lists_do_not_leak_into_each_other(self) -> None:
+        from helpers import memory_db
+        from modules import notes
+
+        other = self._list + "_other"
+        self.addCleanup(memory_db.clear_notes, other)
+        notes.note("add", "milk", self._list)
+        self.assertIn("empty", notes.note("list", "", other))
+
+
+class TestFileJob(unittest.TestCase):
+    def test_a_long_file_pages_instead_of_vanishing(self) -> None:
+        """A file cut off at the cap with no way to read on is a file the
+        model can only ever see the start of."""
+        from modules import desktop
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "long.txt")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("a" * (desktop._MAX_FILE_CHARS + 100))
+
+            first = desktop.Desktop._read_file(path, 0)
+            self.assertIn(f"offset={desktop._MAX_FILE_CHARS}", first)
+            rest = desktop.Desktop._read_file(path, desktop._MAX_FILE_CHARS)
+            self.assertNotIn("Read on with", rest)
+
+    def test_writing_is_gated_on_allow_actions(self) -> None:
+        from unittest import mock
+
+        from modules.desktop import Desktop
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "new.txt")
+            with mock.patch("modules.desktop._actions_allowed", return_value=False):
+                result = Desktop.file(Desktop.__new__(Desktop), "write", path, "hello")
+            self.assertIn("allow_actions", result)
+            self.assertFalse(os.path.exists(path))
+
+
+class TestWeatherForecast(unittest.TestCase):
+    def test_days_are_grouped_by_the_city_s_own_clock(self) -> None:
+        """The API answers in UTC. Grouping on that would file a 23:00 reading
+        under tomorrow for anyone east of Greenwich."""
+        from modules.weather import _group_by_day
+
+        # 2022-08-30 22:30 UTC — already the 31st in a +02:00 city.
+        data = {
+            "city": {"name": "Zocca", "timezone": 7200},
+            "list": [
+                {"dt": 1661898600, "main": {"temp": 12.0},
+                 "weather": [{"description": "clear sky"}]},
+            ],
+        }
+        days = _group_by_day(data)
+        self.assertEqual([d["date"] for d in days], ["2022-08-31"])
+
+    def test_sunrise_reads_in_the_reported_city_s_clock(self) -> None:
+        """Rendered against the machine's timezone, Tokyo's sunrise came back
+        as 22:15 — a plausible-looking time, which is why nobody noticed."""
+        from modules.weather import _sun_line
+
+        # 2022-08-30 20:15 UTC = 05:15 in Tokyo (+09:00).
+        line = _sun_line({"sunrise": 1661890500, "sunset": 1661936640,
+                          "utc_offset": 9 * 3600})
+        self.assertIn("Sunrise 05:15", line)
+
+    def test_a_named_city_is_reported_by_the_name_that_was_asked_for(self) -> None:
+        """OpenWeatherMap answers with its nearest reporting station, which for
+        Tokyo is 'Japan'. Right for an IP guess, wrong for a request."""
+        from unittest import mock
+
+        from modules import weather
+
+        with mock.patch.dict(os.environ, {"WEATHER_API_KEY": "x"}), \
+                mock.patch.object(weather, "_get_coordinates_for_city_name",
+                                  return_value=(35.6, 139.7)), \
+                mock.patch.object(weather, "_get_weather_for_coordinates",
+                                  return_value={"name": "Japan", "main": {"temp": 21},
+                                                "weather": [{"description": "rain"}]}):
+            self.assertEqual(weather.snapshot("Tokyo")["city"], "Tokyo")
+
+    def test_the_headline_comes_from_the_middle_of_the_day(self) -> None:
+        from modules.weather import _group_by_day
+
+        data = {
+            "city": {"name": "Zocca", "timezone": 0},
+            "list": [
+                # 03:00 and 12:00 on the same day.
+                {"dt": 1661828400, "main": {"temp": 5.0},
+                 "weather": [{"description": "night fog"}]},
+                {"dt": 1661860800, "main": {"temp": 20.0},
+                 "weather": [{"description": "sunny"}]},
+            ],
+        }
+        day = _group_by_day(data)[0]
+        self.assertEqual(day["description"], "sunny")
+        self.assertEqual((day["low"], day["high"]), (5, 20))
+
+
+class TestTriggers(unittest.TestCase):
+    def setUp(self) -> None:
+        from helpers import triggers
+
+        triggers._last_polled.clear()
+        triggers._last_fired.clear()
+        triggers._last_fact.clear()
+        triggers._last_any_fire = 0.0
+
+    def test_nothing_fires_while_proactive_mode_is_off(self) -> None:
+        """The whole feature ships off; a trigger that fired anyway would be
+        the assistant talking without being asked."""
+        from unittest import mock
+
+        from helpers import triggers
+
+        with mock.patch.object(triggers, "enabled", return_value=False), \
+                mock.patch.object(triggers, "_fire") as fire:
+            triggers._tick()
+        fire.assert_not_called()
+
+    def test_nothing_fires_mid_turn(self) -> None:
+        from unittest import mock
+
+        from helpers import triggers
+
+        loud = triggers.Trigger("loud", "always", lambda: "something", 0.0, 0.0)
+        with mock.patch.object(triggers, "enabled", return_value=True), \
+                mock.patch.object(triggers, "_TRIGGERS", [loud]), \
+                mock.patch.object(triggers, "_fire") as fire:
+            from helpers.decorators import agent_lock
+
+            with agent_lock:
+                triggers._tick()
+            fire.assert_not_called()
+            triggers._tick()
+        fire.assert_called_once()
+
+    def test_the_same_fact_is_not_announced_twice(self) -> None:
+        """A battery sitting at 12% would otherwise re-announce itself every
+        time its cooldown expired."""
+        from unittest import mock
+
+        from helpers import triggers
+
+        loud = triggers.Trigger("loud", "always", lambda: "battery at 12%", 0.0, 0.0)
+        with mock.patch.object(triggers, "enabled", return_value=True), \
+                mock.patch.object(triggers, "_TRIGGERS", [loud]), \
+                mock.patch.object(triggers, "_MIN_GAP_SECONDS", 0.0), \
+                mock.patch.object(triggers, "_fire") as fire:
+            triggers._tick()
+            triggers._last_fact["loud"] = "battery at 12%"
+            triggers._tick()
+        fire.assert_called_once()
+
+    def test_every_trigger_is_reachable_by_name(self) -> None:
+        from helpers import triggers
+
+        for trigger in triggers.all_triggers():
+            with self.subTest(trigger=trigger.name):
+                triggers.set_enabled(trigger.name, False)
+                self.assertFalse(triggers.is_on(trigger.name))
+                triggers.set_enabled(trigger.name, True)
+                self.assertTrue(triggers.is_on(trigger.name))
+
+
+class TestHomeAssistantIndexCache(unittest.TestCase):
+    def test_a_service_call_drops_the_cached_states(self) -> None:
+        """The index carries live values — a light's brightness, a lock's
+        state. Reading one back from before the change is the fabricated-value
+        bug the system prompt spends a paragraph forbidding."""
+        from modules import home_assistant
+
+        home_assistant._index.entities = ["stale"]
+        home_assistant._index.stamp = 10 ** 9
+        home_assistant._invalidate_index()
+        self.assertEqual(home_assistant._index.entities, [])
 
 
 if __name__ == "__main__":

@@ -17,32 +17,6 @@ from pydantic import BaseModel
 from helpers.config import Config
 from helpers.registry import ServiceRegistry
 
-# Jobs the web UI flags before invoking. Not a config key — a user editing this
-# list is a code change, not a setting.
-_DESTRUCTIVE_JOBS: typing.Set[str] = {
-    "exit",
-    "close_computer",
-    "background_jobs",
-    "send_email",
-    "reply_to_email",
-    "mark_as_read",
-    "delete_email",
-    "manage_drafts",
-    "create_event",
-    "edit_event",
-    "delete_event",
-    "cancel_reminder",
-    "edit_reminder",
-    "remove_google_account",
-    "edit_google_account",
-    # Discards the stored token before re-running consent: an interrupted
-    # sign-in leaves the account worse off than it started.
-    "authorize_google_account",
-    "manage_mcp_server",
-    "wipe_data",
-}
-
-
 def _coerce_args(
     func: typing.Callable,
     raw: typing.Dict[str, typing.Any],
@@ -136,83 +110,6 @@ class SettingsRequest(BaseModel):
     updates: typing.Dict[str, typing.Any] = {}
     # None leaves the enabled modules alone; a list replaces them.
     modules: typing.Optional[typing.List[str]] = None
-
-
-# Wall-clock backstop for one web turn, mirroring _TURN_TIMEOUT_SECONDS in
-# modules/employer.py — without it a stuck tool loop held agent_lock (and so
-# every other turn, voice included) until the process was restarted.
-_WEB_TURN_TIMEOUT_SECONDS = 120.0
-
-
-def _run_web_turn(
-    message: str,
-    on_text: typing.Optional[typing.Callable[[str], None]] = None,
-) -> typing.Any:
-    """Run one agent turn for a web client. Shared by POST /api/chat and the
-    WebSocket chat path so both get the same cancel and timeout behaviour."""
-    import threading
-
-    from helpers.agent import AgentResult, _fallback_from_calls, run_agent
-    from helpers.bootstrap import get_ai_client
-    from helpers.conversation import Conversation
-    from helpers.decorators import agent_lock, set_agent_active
-    from helpers.events import clear_cancel, session_cancel
-    from modules.ai import build_agent_system_prompt
-    from modules.employer import MAX_AGENT_STEPS
-
-    ai_client = get_ai_client()
-    system_prompt = build_agent_system_prompt()
-    all_jobs = ServiceRegistry.get_all_jobs()
-
-    timed_out = threading.Event()
-    timer = threading.Timer(_WEB_TURN_TIMEOUT_SECONDS, timed_out.set)
-    timer.daemon = True
-
-    class _TurnCancel:
-        @staticmethod
-        def is_set() -> bool:
-            return session_cancel.is_set() or timed_out.is_set()
-
-    with agent_lock:
-        # Inside the lock: a cancel raised against a previous turn must not
-        # abort this one, but clearing it earlier could cancel a voice turn
-        # that is still running.
-        clear_cancel()
-        set_agent_active(True)
-        timer.start()
-        try:
-            result = run_agent(
-                client=ai_client,
-                user_input=message,
-                available_jobs=all_jobs,
-                system_instructions=system_prompt,
-                history=Conversation.get_messages(),
-                max_steps=MAX_AGENT_STEPS,
-                on_text=on_text,
-                cancel_event=_TurnCancel(),
-            )
-        finally:
-            timer.cancel()
-            set_agent_active(False)
-
-    # A stopped or timed-out turn returns empty text, which the UI would render
-    # as "Empty response" — say what actually happened instead.
-    if result.text:
-        return result
-    if timed_out.is_set():
-        import helpers.diagnostics
-
-        helpers.diagnostics.add(
-            "warning", "AI",
-            f"Web turn exceeded {_WEB_TURN_TIMEOUT_SECONDS:.0f}s — aborted.",
-        )
-        text = _fallback_from_calls(result.calls)
-        if text == "Done.":
-            text = f"That took longer than {_WEB_TURN_TIMEOUT_SECONDS:.0f} seconds — I stopped there."
-        return AgentResult(text=text, calls=result.calls)
-    if session_cancel.is_set():
-        return AgentResult(text="Stopped.", calls=result.calls)
-    return result
 
 
 def build_app() -> FastAPI:
@@ -341,7 +238,7 @@ def build_app() -> FastAPI:
         all_jobs = ServiceRegistry.get_all_jobs()
         job_modules = ServiceRegistry.get_job_modules()
         job_summaries = ServiceRegistry.get_job_summaries()
-        destructive = _DESTRUCTIVE_JOBS
+        destructive = ServiceRegistry.get_job_confirms()
 
         jobs_out = []
         for name, func in all_jobs.items():
@@ -356,7 +253,7 @@ def build_app() -> FastAPI:
                     "module": job_modules.get(name, ""),
                     "summary": job_summaries.get(name, ""),
                     "description": description,
-                    "destructive": name in destructive,
+                    "destructive": bool(destructive.get(name)),
                     "parameters": {
                         "properties": properties,
                         "required": required,
@@ -478,6 +375,13 @@ def build_app() -> FastAPI:
                 status_code=422, detail=f"Argument coercion failed: {e}"
             )
 
+        if ServiceRegistry.job_confirms(req.name):
+            # Deliberately not routed through helpers/confirm.py: the click
+            # already passed the UI's confirm dialog and the user is watching
+            # the result. Logged separately so the audit trail says which of
+            # these ran from a button rather than from the model.
+            logger.log_system_event("web_invoke_confirmed", req.name)
+
         logger.log_function_call(req.name, "[web]", coerced)
         try:
             # agent_lock guards the per-turn tool-outcome ledger (see
@@ -508,21 +412,17 @@ def build_app() -> FastAPI:
         if not req.message or not req.message.strip():
             raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-        try:
-            result = _run_web_turn(req.message)
-            safe_calls = _sanitize_calls(result.calls)
-            turn_id = Conversation.record_turn(
-                req.message, result.text, calls=safe_calls
-            )
-            return {"id": turn_id, "text": result.text, "calls": safe_calls}
-        except Exception as e:
-            logger.log_error(str(e), "web_chat")
-            classified = _classify_api_error(e)
-            if classified:
-                user_msg, hint = classified
-                _emit_api_diagnostic(user_msg, hint)
-                raise HTTPException(status_code=503, detail=user_msg)
-            raise HTTPException(status_code=500, detail=str(e))
+        from helpers.turn import run_turn
+
+        result = run_turn(req.message)
+        if result.error:
+            logger.log_error(result.error, "web_chat")
+            raise HTTPException(status_code=503, detail=result.error)
+        safe_calls = _sanitize_calls(result.calls)
+        turn_id = Conversation.record_turn(
+            req.message, result.text, calls=safe_calls
+        )
+        return {"id": turn_id, "text": result.text, "calls": safe_calls}
 
 
     @app.post("/api/chat/clear")
@@ -674,9 +574,14 @@ def build_app() -> FastAPI:
         def _run() -> None:
             from helpers.conversation import Conversation
             from helpers.logger import logger
+            from helpers.turn import run_turn
 
             try:
-                result = _run_web_turn(message, on_text=lambda c: q.put(("delta", c)))
+                result = run_turn(message, on_text=lambda c: q.put(("delta", c)))
+                if result.error:
+                    logger.log_error(result.error, "ws_chat")
+                    q.put(("error", result.error))
+                    return
 
                 safe_calls = _sanitize_calls(result.calls)
                 # emit=False: we broadcast ourselves below with session_id included
@@ -690,13 +595,7 @@ def build_app() -> FastAPI:
                 }))
             except Exception as e:
                 logger.log_error(str(e), "ws_chat")
-                classified = _classify_api_error(e)
-                if classified:
-                    user_msg, hint = classified
-                    _emit_api_diagnostic(user_msg, hint)
-                    q.put(("error", user_msg))
-                else:
-                    q.put(("error", str(e)))
+                q.put(("error", str(e)))
             finally:
                 q.put(None)
 

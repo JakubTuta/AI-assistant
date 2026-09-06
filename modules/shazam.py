@@ -25,11 +25,14 @@ _cached_loopback_device: typing.Optional[str] = None
     summary="Identify the song currently playing",
 )
 @capture_response
-def identify_song() -> str:
+def identify_song(queue: bool = False) -> str:
     """
     [STANDALONE JOB] Identifies the song currently playing through the computer's
     speakers or headphones by recording a few seconds of system audio and matching
-    it against Shazam.
+    it against Shazam, and can add what it finds to the Spotify queue.
+
+    Args:
+        queue (bool): True to also queue the song on Spotify once it is named.
 
     Returns:
         str: "<title> by <artist>" or a not-found / error message.
@@ -47,7 +50,25 @@ def identify_song() -> str:
             pass
     if not track:
         return "I couldn't recognize that song. Try again during the chorus."
-    return f"This is {track['title']} by {track['artist']}."
+
+    named = f"This is {track['title']} by {track['artist']}."
+    if not queue:
+        return named
+    return f"{named} {_queue_on_spotify(track)}"
+
+
+def _queue_on_spotify(track: typing.Dict[str, str]) -> str:
+    """The hand-off that made 'what is this, and queue it' one request."""
+    from helpers.registry import ServiceRegistry
+
+    spotify = ServiceRegistry.get_service_instance("spotify")
+    if spotify is None:
+        return "Spotify isn't running here, so I couldn't queue it."
+    try:
+        return spotify.add_to_queue(title=track["title"], artist=track["artist"])
+    except Exception as e:
+        logger.log_error(str(e), "shazam.queue")
+        return f"I couldn't queue it: {e}"
 
 
 def _try_record_device(p: typing.Any, dev: dict, seconds: int) -> typing.Optional[np.ndarray]:

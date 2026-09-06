@@ -9,6 +9,11 @@ assistant:
   personality: "Friendly and concise."
   # Language for AI responses and TTS. BCP-47 codes, e.g. "en", "pl".
   language: "en"
+  proactive:
+    # Let Wony start a conversation on its own — a low battery, a drive nearly
+    # full, a meeting about to start, important mail. Off by default; ask
+    # "what do you watch for" to see the list and switch one off.
+    enabled: false
 
 voice:
   # Run `python -c "from kokoro_onnx import Kokoro; k=Kokoro('models/kokoro-v1.0.onnx','models/voices-v1.0.bin'); print(k.get_voices())"` to list all voices.
@@ -78,13 +83,15 @@ ai:
     max_turns: 5   # how many past exchanges Wony remembers within a session
 
 # Only listed modules load. A module still won't run if credentials/deps are missing.
-# Run "check setup" to see what each broken module needs.
+# Ask Wony "check my setup" to see what each broken module needs.
+# Conversation, module health and the agent loop itself are always on and are
+# not listed here.
 enabled_modules:
-  - ai             # always-on: conversation, history, AI provider routing
-  - status         # always-on: module health and setup diagnostics
   - basics         # time, date, shutdown, daily briefing
   - scheduler      # timers, alarms and reminders; can run another job when they fire
+  - notes          # shopping / todo lists kept in wony.db
   - weather        # current weather and forecasts
+  # - system         # battery, disk space, memory, network (pip install -r requirements/system.txt)
   # - spotify        # playback control (play, pause, skip, search, volume)
   # - screen         # screenshot capture and OCR text extraction
   # - gmail          # read, search, and monitor Gmail (requires Google OAuth)
@@ -108,8 +115,9 @@ modules:
   weather:
     default_units: "metric"   # metric | imperial
   gmail:
-    # Safety gate — set to true to let Wony send, reply and delete email.
-    # While false it saves everything as a draft for you to send yourself.
+    # Safety gate — set to true to let Wony send, reply, delete and mark mail
+    # as read. While false it saves everything as a draft for you to send
+    # yourself.
     allow_write: false
     # Set to true to have AI summarize email lists (sends content to your AI provider).
     use_ai: false
@@ -123,6 +131,11 @@ modules:
     # Safety gate — set to true to enable type/click/clipboard-write/file-open actions.
     allow_actions: false
     file_search_root: "~"     # root dir for find_file searches
+  mcp:
+    # Safety gate — an MCP server is a program Wony starts on this computer with
+    # your privileges. While false, adding/editing/connecting one tells you the
+    # command instead of running it.
+    allow_install: false
 
 tray:
   notify_on_ready: true

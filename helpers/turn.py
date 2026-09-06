@@ -1,0 +1,147 @@
+"""
+One agent turn, from text in to text out.
+
+Every input path runs through run_turn(): the voice loop, POST /api/chat, the
+WebSocket chat. It owns the things that must not be duplicated per caller —
+the process-wide agent lock, the cancel signal, the per-turn tool-outcome
+ledger, the wall-clock backstop, and the translation of a failure into
+something a human can read.
+
+Callers keep only what is theirs: the voice path rigs TTS streaming, barge-in
+and the "one moment" cue into `on_text`; every caller records its own turn into
+Conversation, because the WebSocket path needs the turn id back.
+"""
+
+import threading
+import typing
+
+# How many tool calls the agent may chain before it has to answer. Deep enough
+# for the real chains ("read that email, then put it in my calendar"), shallow
+# enough that a confused model can't spend a minute looping.
+MAX_AGENT_STEPS = 5
+
+# Wall-clock backstop for one turn (LLM + tool calls). Checked between agent
+# steps and before each tool call — not a hard preempt of a call already in
+# flight, which is what the AI client / helpers.net timeouts are for. Without
+# it a stuck tool loop holds agent_lock, and so every other turn, until the
+# process is restarted.
+_TURN_TIMEOUT_SECONDS = 120.0
+
+
+class TurnResult(typing.NamedTuple):
+    text: str
+    calls: typing.List[typing.Dict[str, typing.Any]]
+    # True when the turn was cut short by the backstop above. `text` still
+    # carries something useful (the last tool result, or an apology).
+    timed_out: bool
+    # Set when the turn failed outright. `text` is the same message, so a
+    # caller that only wants something to show can ignore this field.
+    error: typing.Optional[str]
+
+
+def run_turn(
+    user_input: str,
+    on_text: typing.Optional[typing.Callable[[str], None]] = None,
+) -> TurnResult:
+    """Run one agent turn. Never raises — failures come back in TurnResult.error."""
+    from helpers import confirm
+    from helpers.agent import _fallback_from_calls, run_agent
+    from helpers.bootstrap import get_ai_client
+    from helpers.conversation import Conversation
+    from helpers.decorators import (
+        agent_lock,
+        begin_tool_outcomes,
+        set_agent_active,
+    )
+    from helpers.events import clear_cancel, session_cancel
+    from helpers.registry import ServiceRegistry
+    from modules.ai import build_agent_system_prompt
+
+    timed_out = threading.Event()
+    timer = threading.Timer(_TURN_TIMEOUT_SECONDS, timed_out.set)
+    timer.daemon = True
+
+    class _TurnCancel:
+        @staticmethod
+        def is_set() -> bool:
+            return session_cancel.is_set() or timed_out.is_set()
+
+    agent_result = None
+    agent_err: typing.Optional[Exception] = None
+
+    with agent_lock:
+        # Inside the lock: a cancel raised against a previous turn must not
+        # abort this one, but clearing it before acquiring could cancel a turn
+        # that is still running. The ledger is reset here for the same reason —
+        # it is read back by the voice path to decide whether to speak, and a
+        # leftover entry from another turn would answer for this one.
+        clear_cancel()
+        set_agent_active(True)
+        begin_tool_outcomes()
+        # A confirmation armed in this turn may only be spent in a later one —
+        # this is what stops the model from confirming itself.
+        confirm.begin_turn()
+        timer.start()
+        try:
+            agent_result = run_agent(
+                client=get_ai_client(),
+                user_input=user_input,
+                available_jobs=ServiceRegistry.get_all_jobs(),
+                system_instructions=build_agent_system_prompt(),
+                history=Conversation.get_messages(),
+                max_steps=MAX_AGENT_STEPS,
+                on_text=on_text,
+                cancel_event=_TurnCancel(),
+            )
+        except Exception as exc:
+            agent_err = exc
+        finally:
+            timer.cancel()
+            set_agent_active(False)
+
+    if agent_err is not None:
+        message = describe_failure(agent_err)
+        return TurnResult(text=message, calls=[], timed_out=False, error=message)
+
+    if timed_out.is_set() and not agent_result.text:
+        import helpers.diagnostics
+
+        helpers.diagnostics.add(
+            "warning", "AI", f"Turn exceeded {_TURN_TIMEOUT_SECONDS:.0f}s — aborted."
+        )
+        # A tool did run and returned something before the clock ran out —
+        # showing that beats showing an apology.
+        fallback = _fallback_from_calls(agent_result.calls)
+        if fallback == "Done.":
+            fallback = "Sorry, that took too long — I'm stopping there."
+        return TurnResult(
+            text=fallback, calls=agent_result.calls, timed_out=True, error=None
+        )
+
+    # A stopped turn returns empty text, which the UI would render as nothing at
+    # all — say what happened instead.
+    if not agent_result.text and session_cancel.is_set():
+        return TurnResult(
+            text="Stopped.", calls=agent_result.calls, timed_out=False, error=None
+        )
+
+    return TurnResult(
+        text=agent_result.text, calls=agent_result.calls, timed_out=False, error=None
+    )
+
+
+def describe_failure(exc: Exception) -> str:
+    """Turn an exception into a message worth putting on screen, and file a
+    diagnostic so /api/health shows it too."""
+    import helpers.diagnostics
+    from helpers.errors import classify_api_error, emit_api_diagnostic
+
+    classified = classify_api_error(exc)
+    if classified:
+        message, hint = classified
+        emit_api_diagnostic(message, hint)
+        return message
+
+    message = f"Something went wrong: {exc}"
+    helpers.diagnostics.add("error", "AI", message)
+    return message

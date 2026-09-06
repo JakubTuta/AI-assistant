@@ -82,7 +82,10 @@ VENV_DIR = os.path.join(ROOT, "venv")
 CREDENTIALS = os.path.join(ROOT, "credentials")
 GOOGLE_CREDENTIALS = os.path.join(CREDENTIALS, "google_credentials.json")
 
-ALWAYS_ON = ["ai", "status", "basics"]
+# The modules setup always installs. "ai", "status" and "employer" are always-on
+# in the app itself (helpers/config.ALWAYS_ON) and are not written into
+# enabled_modules; "basics" is a real choice that everyone gets by default.
+ALWAYS_ON = ["basics"]
 
 
 # key, label, requirement files, config module (None = run-mode/enhancement),
@@ -145,6 +148,25 @@ FEATURES = [
         "needs": "",
     },
     {
+        "key": "system",
+        "label": "Computer health (battery, disk, memory)",
+        "reqs": ["system.txt"],
+        "module": "system",
+        "default": False,
+        "desc": "Report battery level, free disk space, memory and network status.",
+        "needs": "",
+    },
+    {
+        "key": "notes",
+        # Stored in wony.db next to everything else — nothing to install.
+        "reqs": [],
+        "label": "Shopping & todo lists",
+        "module": "notes",
+        "default": True,
+        "desc": "Keep written lists by voice: add an item, read one back, tick it off.",
+        "needs": "",
+    },
+    {
         "key": "spotify",
         "label": "Spotify playback control",
         "reqs": [],
@@ -198,8 +220,8 @@ FEATURES = [
         "reqs": ["desktop.txt"],
         "module": "desktop",
         "default": False,
-        "desc": "Open apps, manage windows, read/write clipboard, open files.",
-        "needs": "Typing and clicking stay off until you allow them in Settings.",
+        "desc": "Open apps, manage windows, read/write clipboard, read and write files.",
+        "needs": "Typing, clicking and writing files stay off until you allow them in Settings.",
     },
     {
         "key": "league",
@@ -243,7 +265,7 @@ FEATURES = [
         "key": "shazam",
         "label": "Song recognition (Shazam)",
         "reqs": ["shazam.txt"],
-        "module": None,
+        "module": "shazam",
         "default": False,
         "desc": "Identify the song currently playing.",
         "needs": "",
@@ -256,7 +278,7 @@ PROBE = {
     "wakeword": "openwakeword",
     "tray": "pystray",
     "weather": "geocoder",
-    "web": "duckduckgo_search",
+    "web": "ddgs",
     "scheduler": "apscheduler",
     "gmail": "simplegmail",
     "calendar": "googleapiclient",
@@ -265,6 +287,7 @@ PROBE = {
     "mcp": "mcp",
     "semantic": "fastembed",
     "shazam": "shazamio",
+    "system": "psutil",
 }
 
 
@@ -781,6 +804,8 @@ def configure(chosen):
         step_home_assistant(env, pending)
     if "desktop" in keys:
         step_desktop()
+    if "mcp" in keys:
+        step_mcp()
     if "voice" in keys:
         step_voice()
     if "tray" in keys:
@@ -1198,6 +1223,15 @@ def step_desktop():
     gate(
         "May Wony type, click and write to the clipboard? (off: it can only look)",
         "modules.desktop.allow_actions",
+    )
+
+
+def step_mcp():
+    section("MCP tool servers")
+    gate(
+        "May Wony start MCP servers itself? These are programs that run on this "
+        "computer (off: it tells you the command instead)",
+        "modules.mcp.allow_install",
     )
 
 

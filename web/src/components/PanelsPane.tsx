@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   CloudSun,
   Lightbulb,
+  ListChecks,
   Music,
   SlidersHorizontal,
   Terminal,
@@ -17,6 +18,7 @@ import { Accounts } from '../panels/Accounts';
 import { Agenda } from '../panels/Agenda';
 import { Devices } from '../panels/Devices';
 import { Music as MusicPanel } from '../panels/Music';
+import { Notes } from '../panels/Notes';
 import { Reminders } from '../panels/Reminders';
 import { Settings } from '../panels/Settings';
 import { Weather } from '../panels/Weather';
@@ -26,6 +28,7 @@ const PANEL_ICONS: Record<string, typeof CloudSun> = {
   weather: CloudSun,
   agenda: CalendarDays,
   reminders: AlarmClock,
+  notes: ListChecks,
   devices: Lightbulb,
   music: Music,
   accounts: UserRound,
@@ -140,6 +143,8 @@ function ActivePanel({ which, locale }: { which: string; locale: string }) {
       return <Accounts key="accounts" />;
     case 'reminders':
       return <Reminders key="reminders" />;
+    case 'notes':
+      return <Notes key="notes" />;
     case 'settings':
       return <Settings key="settings" />;
     default:

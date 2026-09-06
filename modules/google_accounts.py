@@ -86,7 +86,7 @@ class GoogleAccountsService:
     def accounts_snapshot(self) -> typing.Dict[str, typing.Any]:
         """Accounts as data, for the accounts panel.
 
-        Not a job: list_google_accounts returns a sentence, and a row with a
+        Not a job: manage_google_accounts returns a sentence, and a row with a
         primary marker and per-service sign-in state cannot be parsed out of
         one. Reads only local files, so it never triggers a consent prompt.
         """
@@ -114,14 +114,59 @@ class GoogleAccountsService:
         }
 
     @capture_response
-    @method_job
-    def list_google_accounts(self) -> str:
+    @method_job(confirms={"add", "authorize", "remove", "rename", "set_primary"})
+    def manage_google_accounts(
+        self,
+        action: str = "list",
+        name: str = "",
+        new_name: str = "",
+    ) -> str:
         """
-        [GOOGLE ACCOUNTS JOB] Lists all configured Google accounts with their status.
+        [GOOGLE ACCOUNTS JOB] Lists, adds, signs in to, renames or removes the Google
+        accounts Wony can use for Gmail and Calendar, and picks which one is the default.
+        Adding and authorizing open a browser for consent.
+
+        Args:
+            action (str): "list" (the default), "add", "authorize", "remove", "rename"
+                or "set_primary".
+            name (str): Short label for the account, e.g. "work", "personal".
+                (required for everything except "list")
+            new_name (str): The new label. (required for "rename")
 
         Returns:
-            str: All configured accounts, marking the primary.
+            str: The account list, or confirmation of what changed.
         """
+        wanted = (action or "list").strip().lower()
+
+        if wanted in ("list", "show"):
+            return self._list_accounts()
+
+        if not name:
+            return f"Please say which account to {wanted}."
+
+        if wanted == "add":
+            return self._add_account(name)
+        if wanted in ("authorize", "auth", "sign_in", "login"):
+            return self._authorize_account(name)
+        if wanted in ("remove", "delete", "forget"):
+            return self._remove_account(name)
+        if wanted == "rename":
+            if not new_name:
+                return "Error: 'new_name' is required to rename an account."
+            return self._rename_account(name, new_name)
+        if wanted in ("set_primary", "primary", "default"):
+            try:
+                GoogleAccounts.set_primary(name)
+            except ValueError as e:
+                return str(e)
+            return f"Primary account set to '{name}'."
+
+        return (
+            f"Unknown action '{action}'. Use list, add, authorize, remove, "
+            "rename or set_primary."
+        )
+
+    def _list_accounts(self) -> str:
         accounts = GoogleAccounts.list_accounts()
         primary = GoogleAccounts.get_primary()
 
@@ -140,22 +185,7 @@ class GoogleAccountsService:
 
         return f"Google accounts ({len(accounts)}):\n" + "\n".join(lines)
 
-    @capture_response
-    @method_job
-    def add_google_account(self, name: str) -> str:
-        """
-        [GOOGLE ACCOUNTS JOB] Adds a new Google account for Gmail and Calendar access.
-        Opens browser for OAuth consent. The first account added becomes the primary.
-
-        Args:
-            name (str): A short label for the account (e.g. 'work', 'personal'). (required)
-
-        Returns:
-            str: Confirmation that the account was added.
-        """
-        if not name:
-            return "Please provide a name for the account, e.g. 'work' or 'personal'."
-
+    def _add_account(self, name: str) -> str:
         try:
             safe_name = GoogleAccounts.add_account(name)
         except ValueError as e:
@@ -181,22 +211,7 @@ class GoogleAccountsService:
             f"{details} Say 'authorize {safe_name}' to try again."
         )
 
-    @capture_response
-    @method_job
-    def authorize_google_account(self, name: str) -> str:
-        """
-        [GOOGLE ACCOUNTS JOB] Signs in to an already-added Google account again.
-        Opens a browser for consent. Use this when an account has stopped working.
-
-        Args:
-            name (str): The account name to authorize (e.g. 'work'). (required)
-
-        Returns:
-            str: Which services were signed in, or what went wrong.
-        """
-        if not name:
-            return "Please specify which account to authorize."
-
+    def _authorize_account(self, name: str) -> str:
         try:
             GoogleAccounts.clear_tokens(name)
         except ValueError as e:
@@ -213,21 +228,7 @@ class GoogleAccountsService:
             )
         return f"Couldn't sign in to '{name}'. {' '.join(problems)}"
 
-    @capture_response
-    @method_job
-    def remove_google_account(self, name: str) -> str:
-        """
-        [GOOGLE ACCOUNTS JOB] Removes a configured Google account and deletes its tokens.
-
-        Args:
-            name (str): The account name to remove (e.g. 'work'). (required)
-
-        Returns:
-            str: Confirmation that the account was removed.
-        """
-        if not name:
-            return "Please specify which account to remove."
-
+    def _remove_account(self, name: str) -> str:
         try:
             GoogleAccounts.remove_account(name)
         except ValueError as e:
@@ -236,44 +237,15 @@ class GoogleAccountsService:
         self._forget_cached(name)
         return f"Account '{name}' removed."
 
-    @capture_response
-    @method_job
-    def edit_google_account(self, name: str, new_name: str = "", set_primary: bool = False) -> str:
-        """
-        [GOOGLE ACCOUNTS JOB] Edits a Google account — rename it or make it the primary.
-
-        Args:
-            name (str): The account name to edit. (required)
-            new_name (str): New label for the account (leave empty to keep current).
-            set_primary (bool): If true, make this account the primary/default.
-
-        Returns:
-            str: Confirmation of the change, or an error message.
-        """
-        if not name:
-            return "Error: Account name is required."
-        if not new_name and not set_primary:
-            return "Error: Provide new_name or set set_primary=true."
-
-        messages = []
-
-        if new_name and new_name.strip() != name:
-            try:
-                safe = GoogleAccounts.rename_account(name, new_name)
-            except ValueError as e:
-                return str(e)
-            # Token files moved with the account, so anything cached under
-            # either name now points at a path that no longer exists.
-            self._forget_cached(name)
-            self._forget_cached(safe)
-            messages.append(f"Account renamed: '{name}' → '{safe}'.")
-            name = safe  # use new name for subsequent set_primary
-
-        if set_primary:
-            try:
-                GoogleAccounts.set_primary(name)
-                messages.append(f"Primary account set to '{name}'.")
-            except ValueError as e:
-                return str(e)
-
-        return " ".join(messages) if messages else "No changes made."
+    def _rename_account(self, name: str, new_name: str) -> str:
+        if new_name.strip() == name:
+            return "No changes made."
+        try:
+            safe = GoogleAccounts.rename_account(name, new_name)
+        except ValueError as e:
+            return str(e)
+        # Token files moved with the account, so anything cached under either
+        # name now points at a path that no longer exists.
+        self._forget_cached(name)
+        self._forget_cached(safe)
+        return f"Account renamed: '{name}' → '{safe}'."

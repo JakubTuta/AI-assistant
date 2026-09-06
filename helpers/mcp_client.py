@@ -76,6 +76,11 @@ class MCPServerSession:
         or timeout elapses. Returns False on timeout."""
         return self._closed.wait(timeout)
 
+    def is_alive(self) -> bool:
+        """False once _run() has unwound — the child process or connection is
+        gone even though the object is still in _sessions."""
+        return not self._closed.is_set()
+
     def list_tools(self) -> typing.List[typing.Dict]:
         return list(self._tools)
 
@@ -172,8 +177,13 @@ def connect_server(record: typing.Dict) -> MCPServerSession:
     """Connect to an MCP server and register its tools. Returns the session."""
     name = record["name"]
     with _sessions_lock:
-        if name in _sessions:
-            return _sessions[name]
+        existing = _sessions.get(name)
+        if existing is not None:
+            if existing.is_alive():
+                return existing
+            # Dead session left behind by a crashed server — returning it would
+            # report success and then raise "is not connected" on every call.
+            _sessions.pop(name, None)
 
     session = MCPServerSession(name, record)
     session.connect()
@@ -200,8 +210,52 @@ def get_session(name: str) -> typing.Optional[MCPServerSession]:
 
 
 def all_connected() -> typing.List[str]:
+    """Servers with a session that is actually still up.
+
+    A session whose coroutine unwound (server crashed, stdio child exited) stays
+    in _sessions with nothing watching it, so this used to keep reporting it as
+    connected while every tool call raised "is not connected"."""
     with _sessions_lock:
-        return list(_sessions.keys())
+        return [name for name, session in _sessions.items() if session.is_alive()]
+
+
+def revive_server(name: str) -> typing.Optional[MCPServerSession]:
+    """Reconnect a server whose session died. Returns the new session, or None.
+
+    Called from a tool wrapper on the first failure, so a server that came back
+    on its own does not need the app restarted.
+    """
+    with _sessions_lock:
+        session = _sessions.get(name)
+        if session is not None and session.is_alive():
+            return session
+        _sessions.pop(name, None)
+
+    try:
+        from helpers.memory_db import get_mcp_server
+        record = get_mcp_server(name)
+    except Exception as exc:
+        logger.log_error(str(exc), f"mcp.revive.{name}")
+        return None
+    if not record:
+        return None
+
+    fresh = MCPServerSession(name, record)
+    try:
+        fresh.connect()
+    except Exception as exc:
+        _mark_error(name, str(exc))
+        logger.log_error(str(exc), f"mcp.revive.{name}")
+        return None
+
+    with _sessions_lock:
+        _sessions[name] = fresh
+    # Drop first: the server may publish a different tool set than it did
+    # before, and the old wrappers point at the dead session.
+    _unregister_tools(name)
+    _register_tools(fresh)
+    logger.log_system_event("mcp_revived", name)
+    return fresh
 
 
 def disconnect_all(timeout: float = 5.0) -> None:
@@ -291,9 +345,20 @@ def _register_tools(session: MCPServerSession) -> None:
             schema: typing.Dict,
         ) -> typing.Callable:
             def wrapper(**kwargs: typing.Any) -> str:
+                active = sess
+                if not active.is_alive():
+                    # Degrade, don't disable: the server may simply have been
+                    # restarted. Re-resolve once, then fail honestly.
+                    revived = revive_server(active.name)
+                    if revived is None:
+                        return (
+                            f"MCP server '{active.name}' is not running and could "
+                            "not be restarted. Reconnect it with manage_mcp_server."
+                        )
+                    active = revived
                 # remote_name, not local_name: the server only knows the tool by
                 # the name it published, even when we registered it under another.
-                return sess.call_tool(remote_name, kwargs)
+                return active.call_tool(remote_name, kwargs)
             wrapper.__name__ = local_name
             wrapper.__doc__ = desc
             wrapper._tool_schema = schema  # type: ignore[attr-defined]

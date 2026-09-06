@@ -102,8 +102,8 @@ export function Accounts() {
           onAdd={async (name) => {
             setAdding(false);
             await run(
-              'add_google_account',
-              { name },
+              'manage_google_accounts',
+              { action: 'add', name },
               `Adding ${name} — finish signing in with Google in the browser window.`,
             );
           }}
@@ -172,8 +172,8 @@ function Row({
             busy={busy}
             onClick={() =>
               onRun(
-                'authorize_google_account',
-                { name: account.name },
+                'manage_google_accounts',
+                { action: 'authorize', name: account.name },
                 `Signing in ${account.name} — finish in the browser window.`,
               )
             }
@@ -186,8 +186,8 @@ function Row({
               busy={busy}
               onClick={() =>
                 onRun(
-                  'edit_google_account',
-                  { name: account.name, set_primary: 'true' },
+                  'manage_google_accounts',
+                  { action: 'set_primary', name: account.name },
                   'Setting default…',
                 )
               }
@@ -210,8 +210,8 @@ function Row({
               busy={busy || !rename.trim()}
               onClick={() => {
                 onRun(
-                  'edit_google_account',
-                  { name: account.name, new_name: rename.trim() },
+                  'manage_google_accounts',
+                  { action: 'rename', name: account.name, new_name: rename.trim() },
                   'Renaming…',
                 );
                 setRename('');
@@ -228,7 +228,11 @@ function Row({
                 danger
                 onClick={() => {
                   setConfirming(false);
-                  onRun('remove_google_account', { name: account.name }, 'Removing…');
+                  onRun(
+                    'manage_google_accounts',
+                    { action: 'remove', name: account.name },
+                    'Removing…',
+                  );
                 }}
               >
                 Yes, remove it

@@ -2,29 +2,18 @@ import sys
 import threading
 import typing
 
-from helpers.agent import run_agent
 from helpers.audio import Audio
 from helpers.cache import Cache
 from helpers.conversation import Conversation
-from helpers.decorators import begin_tool_outcomes, capture_response, set_agent_active, turn_is_quiet_success, turn_wants_one_message
+from helpers.decorators import capture_response, turn_is_quiet_success, turn_wants_one_message
 from helpers.events import session_cancel
 from helpers.jobs import BackgroundJobs
 from helpers.logger import logger
 from helpers.recognizer import Recognizer
 from helpers.registry import ServiceRegistry, register_job
-from modules.ai import AI, build_agent_system_prompt
+from helpers.turn import run_turn
+from modules.ai import AI
 
-
-
-# Wall-clock backstop for one voice turn (LLM + tool calls). Checked between
-# agent steps and before each tool call — not a hard preempt of a call already
-# in flight, which is what the AI client / helpers.net timeouts are for.
-_TURN_TIMEOUT_SECONDS = 90.0
-
-# How many tool calls the agent may chain before it has to answer. Deep enough
-# for the real chains ("read that email, then put it in my calendar"), shallow
-# enough that a confused model can't spend a minute looping.
-MAX_AGENT_STEPS = 5
 
 # Say "one moment" if no narration has started by this point, so a slow tool
 # call doesn't leave the user in silence wondering if anything happened.
@@ -202,10 +191,6 @@ class Employer:
             Conversation.record_turn(user_input, result_str)
             return result_str
 
-        from helpers.decorators import agent_lock
-
-        system_prompt = build_agent_system_prompt()
-
         # Always stream the model's reply. Audio mode pipes deltas into the TTS
         # pipeline (speech starts on the first sentence); console mode writes
         # them to stdout as they arrive. Either way the full answer reaches the
@@ -258,8 +243,6 @@ class Employer:
                 sys.stdout.write(chunk)
                 sys.stdout.flush()
 
-        # agent_lock serializes concurrent agent runs (wake word + web /api/chat)
-        _agent_err: typing.Optional[Exception] = None
         from helpers.events import emit_state
         emit_state("thinking")
 
@@ -276,142 +259,45 @@ class Employer:
             thinking_timer.daemon = True
             thinking_timer.start()
 
-        # Wall-clock backstop for the whole turn — checked between agent steps
-        # and before each tool call (helpers/agent.py), not a hard preempt of
-        # an already-in-flight blocking call. That's what the LLM client and
-        # helpers/net.py timeouts are for; this catches the rest (e.g. a slow
-        # multi-page tool loop). A separate event from session_cancel because
-        # session_cancel silently suppresses speech (deliberate "stop"), while
-        # a timeout should still say something.
-        turn_timed_out = threading.Event()
-        turn_timer: typing.Optional[threading.Timer] = None
-        if _TURN_TIMEOUT_SECONDS > 0:
-            turn_timer = threading.Timer(_TURN_TIMEOUT_SECONDS, turn_timed_out.set)
-            turn_timer.daemon = True
-            turn_timer.start()
-
-        class _TurnCancel:
-            @staticmethod
-            def is_set() -> bool:
-                return session_cancel.is_set() or turn_timed_out.is_set()
-
-        with agent_lock:
-            set_agent_active(True)
-            begin_tool_outcomes()
-            try:
-                agent_result = run_agent(
-                    client=self.ai_model.client,
-                    user_input=user_input,
-                    available_jobs=self.available_jobs,
-                    system_instructions=system_prompt,
-                    history=Conversation.get_messages(),
-                    max_steps=MAX_AGENT_STEPS,
-                    on_text=on_text,
-                    cancel_event=_TurnCancel(),
-                )
-            except Exception as _e:
-                _agent_err = _e
-            finally:
-                set_agent_active(False)
-                if thinking_timer is not None:
-                    thinking_timer.cancel()
-                if turn_timer is not None:
-                    turn_timer.cancel()
-                if tts_queue is not None:
-                    tts_queue.put(None)
-
-        if _agent_err is not None:
-            if tts_thread is not None:
-                tts_thread.join()
-            from helpers.errors import classify_api_error, emit_api_diagnostic
-            import helpers.diagnostics
-            classified = classify_api_error(_agent_err)
-            if classified:
-                err_msg, hint = classified
-                emit_api_diagnostic(err_msg, hint)
-            else:
-                err_msg = f"Something went wrong: {_agent_err}"
-                helpers.diagnostics.add("error", "AI", err_msg)
-            if audio:
-                Audio.text_to_speech(err_msg)
-            else:
-                print(err_msg)
-            return err_msg
-
-        if turn_timed_out.is_set() and not agent_result.text:
-            if tts_thread is not None:
-                tts_thread.join()
-            import helpers.diagnostics
-            helpers.diagnostics.add(
-                "warning", "AI",
-                f"Turn exceeded {_TURN_TIMEOUT_SECONDS:.0f}s — aborted.",
-            )
-            fallback = ""
-            for call in reversed(agent_result.calls):
-                result = (call.get("result") or "").strip()
-                if result:
-                    fallback = result
-                    break
-            timeout_msg = fallback or "Sorry, that took too long — I'm stopping there."
-            if audio:
-                Audio.text_to_speech(timeout_msg)
-            else:
-                print(timeout_msg)
-            Conversation.record_turn(user_input, timeout_msg, calls=agent_result.calls)
-            return timeout_msg
+        try:
+            result = run_turn(user_input, on_text=on_text)
+        finally:
+            if thinking_timer is not None:
+                thinking_timer.cancel()
+            if tts_queue is not None:
+                tts_queue.put(None)
 
         if tts_thread is not None:
             tts_thread.join()
             _, paused = tts_result.get("value", ("", []))
             self._last_paused_sentences = paused
-        elif agent_result.text:
+        elif result.text and not (result.error or result.timed_out):
             print()  # newline after the streamed console line
 
-        Conversation.record_turn(user_input, agent_result.text, calls=agent_result.calls)
-        return agent_result.text
+        # Nothing reached on_text on these two paths, so the message still has
+        # to be delivered — and the TTS lane is free again by now.
+        if result.error or result.timed_out:
+            if audio:
+                Audio.text_to_speech(result.text)
+            else:
+                print(result.text)
 
-    @register_job
-    @capture_response
-    @staticmethod
-    def help() -> str:
-        """
-        [SYSTEM INFORMATION JOB] Lists every command available right now, grouped by
-        module. Only shows what is actually registered and working.
+        # A failed turn is not part of the conversation; a timed-out one is,
+        # because a tool did run and its result is what we just said.
+        if result.error:
+            return result.text
 
-        Returns:
-            str: Commands grouped by module with descriptions.
-        """
-        job_modules = ServiceRegistry.get_job_modules()
-        job_summaries = ServiceRegistry.get_job_summaries()
-        all_jobs = ServiceRegistry.get_all_jobs()
+        Conversation.record_turn(user_input, result.text, calls=result.calls)
+        return result.text
 
-        # Group by module
-        grouped: typing.Dict[str, typing.List[typing.Tuple[str, str]]] = {}
-        for job_name in all_jobs:
-            module = job_modules.get(job_name, "general")
-            summary = job_summaries.get(job_name, "")
-            grouped.setdefault(module, []).append((job_name, summary))
-
-        lines = ["Available commands:"]
-        for module in sorted(grouped.keys()):
-            lines.append(f"\n  [{module or 'general'}]")
-            for name, summary in sorted(grouped[module]):
-                display = name.replace("_", " ")
-                if summary:
-                    lines.append(f"    {display} — {summary}")
-                else:
-                    lines.append(f"    {display}")
-
-        return "\n".join(lines)
-
-    @register_job
+    @register_job(module_name="employer", confirms={"stop", "cancel", "stop all"})
     @capture_response
     @staticmethod
     def background_jobs(action: str = "list") -> str:
         """
         [SYSTEM CONTROL JOB] Lists what is running in the background — inbox and
         calendar watchers and the like — or stops all of it. This is not about timers
-        and reminders: those are list_reminders and cancel_reminder.
+        and reminders: those are add_reminder and manage_reminders.
 
         Args:
             action (str): "list" (the default) or "stop".
@@ -435,7 +321,7 @@ class Employer:
             return f"Active background jobs: {', '.join(running)}."
         return "No background jobs are currently running."
 
-    @register_job
+    @register_job(module_name="employer", confirms=True)
     @staticmethod
     def exit() -> None:
         """

@@ -64,10 +64,11 @@ fixes, or ask Wony "check setup".
 | Tray icon | Right-click → **Listen now**.                                       |
 | Browser   | The microphone button in the chat page.                             |
 
-Things to try: _"what's the weather"_, _"set a timer for 10 minutes"_, _"read my
-last email"_, _"what's on my calendar tomorrow"_, _"play some jazz"_, _"turn off
-the kitchen light"_, _"remember I prefer metric"_, _"what did we talk about on
-Monday"_.
+Things to try: _"what's the weather"_, _"what's it doing tomorrow"_, _"set a
+timer for 10 minutes"_, _"add milk to my shopping list"_, _"how much battery
+have I got"_, _"read my last email"_, _"what's on my calendar tomorrow"_,
+_"play some jazz"_, _"turn off the kitchen light"_, _"remember I prefer
+metric"_, _"what did we talk about on Monday"_.
 
 A timer can also run something else when it fires, which is how you get a daily
 briefing: _"every weekday at 8am run greeting"_ reads out the time, weather,
@@ -86,6 +87,7 @@ looking at rather than asking about.
 | Weather  | Weather                 | Temperature, wind, humidity, sunrise and sunset       |
 | Today    | Google Calendar         | Today's and tomorrow's events                         |
 | Timers   | Timers & reminders      | Everything counting down, with a cancel button        |
+| Lists    | Lists                   | Your shopping and todo lists                          |
 | Devices  | Home Assistant          | Every device by room, one card each, with its switches and settings |
 | Music    | Spotify                 | Cover art, transport and volume                       |
 | Accounts | Google accounts         | Add, sign in to and switch Google accounts            |
@@ -120,18 +122,31 @@ are switched on.
 
 ### What Wony may do on its own
 
-These four start **off**. Nothing else can turn them on.
+These six start **off**. Nothing else can turn them on.
 
-| Switch                           | Off (the default)                       | On                                |
-| -------------------------------- | --------------------------------------- | --------------------------------- |
-| Send and delete email            | Writes a draft in Gmail for you to send | Sends and deletes for you         |
-| Change my calendar               | Tells you what to add                   | Creates, edits and deletes events |
-| Unlock doors and open the garage | Lights and blinds still work            | Locks, garage and alarms too      |
-| Type and click for me            | Can look at the screen                  | Can type, click and open files    |
+| Switch                           | Off (the default)                       | On                                          |
+| -------------------------------- | --------------------------------------- | ------------------------------------------- |
+| Change my mailbox                | Writes a draft in Gmail for you to send | Sends, deletes and marks mail read          |
+| Change my calendar               | Tells you what to add                   | Creates, edits and deletes events           |
+| Unlock doors and open the garage | Lights and blinds still work            | Locks, garage and alarms too                |
+| Type and click for me            | Can look at the screen                  | Can type, click, open and write files       |
+| Install MCP tool servers         | Tells you the command                   | Starts the program on this computer         |
+| Speak up on its own              | Only answers when asked                 | Can start a conversation about what it sees |
 
 They are `modules.gmail.allow_write`, `modules.calendar.allow_write`,
-`modules.home_assistant.allow_locks` and `modules.desktop.allow_actions` in
-`config.yaml`.
+`modules.home_assistant.allow_locks`, `modules.desktop.allow_actions`,
+`modules.mcp.allow_install` and `assistant.proactive.enabled` in `config.yaml`.
+
+With the last one on, Wony watches for a low battery, a drive nearly full, a
+meeting about to start and mail Gmail marked important — and says something in
+its own words rather than a canned alert. Ask _"what do you watch for"_ to see
+the list, or _"stop watching for important email"_ to switch one off.
+
+Separately from those switches, anything that changes something you care about —
+sending or deleting mail, changing your calendar, cancelling a timer, shutting
+the PC down — is read back to you first and only happens once you say yes. In the
+chat page you get a confirm dialog; by voice or by typing, Wony tells you what it
+is about to do and waits for an answer.
 
 > **Keep `server.host` at `127.0.0.1`.** The web page has no password and can
 > run every command Wony has. On any other address, anyone who can reach the
@@ -149,7 +164,9 @@ off — nothing crashes, and `doctor` says what is missing.
 | -------------------------------------------- | ------------------------------------------------------------------------------ |
 | Everyday basics — time, date, daily briefing | none                                                                           |
 | Timers, alarms and reminders                 | none                                                                           |
-| Weather                                      | free key from [openweathermap.org/api](https://openweathermap.org/api)         |
+| Shopping and todo lists                      | none                                                                           |
+| Computer health — battery, disk, memory      | none                                                                           |
+| Weather — now and the next five days         | free key from [openweathermap.org/api](https://openweathermap.org/api)         |
 | Web search and page reading                  | none (optional `TAVILY_API_KEY` for better results)                            |
 | Voice — speech in and out                    | none; downloads its speech models once                                         |
 | Wake word                                    | needs Voice                                                                    |
@@ -290,7 +307,7 @@ It keeps your `.env` and `config.yaml` and only installs what is newly ticked.
 
 ## Privacy
 
-Conversations, remembered facts and reminders are stored in `wony.db` in this
-folder. Nothing is uploaded anywhere except the text of your requests, which
+Conversations, remembered facts, lists and reminders are stored in `wony.db` in
+this folder. Nothing is uploaded anywhere except the text of your requests, which
 goes to the AI provider you chose (nowhere at all with Ollama). **Wipe data** in
 the chat page deletes all of it. Speech recognition and speech are local.
