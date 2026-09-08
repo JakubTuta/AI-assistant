@@ -4,10 +4,6 @@
    OS-level light/dark preference worth following, and the toggle has to win. */
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
-/* Short panels — an 800×480 display with the keyboard up has no room for
-   anything else, so the keyboard takes the screen instead of sharing it. */
-@custom-variant short (@media (max-height: 560px));
-
 /* ── Palettes ──────────────────────────────────────────────────────────────
    Two complete looks. They share every dimension — spacing, radius, geometry
    — and differ only in color and display face, so nothing reflows on toggle. */
@@ -273,61 +269,4 @@ button {
 .list-row {
   content-visibility: auto;
   contain-intrinsic-size: auto 84px;
-}
-
-/* ── Virtual keyboard ──────────────────────────────────────────────────────
-   react-simple-keyboard ships its own stylesheet; this replaces it entirely so
-   the keys belong to the same design as everything else. */
-
-.simple-keyboard {
-  background: transparent;
-  padding: 0;
-  font-family: inherit;
-}
-
-.simple-keyboard .hg-row {
-  display: flex;
-  gap: clamp(4px, 0.8vw, 8px);
-}
-
-.simple-keyboard .hg-row:not(:last-child) {
-  margin-bottom: clamp(4px, 0.8vw, 8px);
-}
-
-.simple-keyboard .hg-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  /* 44px is the floor a fingertip needs; it grows with the panel from there. */
-  height: clamp(44px, 8.5vh, 64px);
-  border-radius: 10px;
-  border: 1px solid var(--wony-line);
-  background: var(--wony-surface-2);
-  color: var(--wony-text);
-  font-size: clamp(0.9rem, 2vw, 1.15rem);
-  transition: transform 100ms var(--ease-out-soft);
-}
-
-.simple-keyboard .hg-button:active,
-.simple-keyboard .hg-button.hg-activeButton {
-  transform: scale(0.94);
-  background: var(--wony-accent-soft);
-  border-color: var(--wony-accent);
-}
-
-.simple-keyboard .hg-button.hg-functionBtn {
-  background: var(--wony-surface);
-  color: var(--wony-muted);
-}
-
-.simple-keyboard .hg-button[data-skbtn="{enter}"] {
-  background: var(--wony-accent);
-  border-color: var(--wony-accent);
-  color: var(--wony-on-accent);
-  flex: 1.6;
-}
-
-.simple-keyboard .hg-button[data-skbtn="{space}"] {
-  flex: 5;
 }

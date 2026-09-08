@@ -89,7 +89,7 @@ FEATURES = [
         "reqs": ["server.txt"],
         "module": None,
         "default": True,
-        "desc": "Run Wony as a screen: tap tiles, type on the on-screen keyboard.",
+        "desc": "Run Wony as a screen: tap tiles, type into the chat box.",
         "needs": "Start with: python wony.py   (then open the URL it prints).",
     },
     {

@@ -1,18 +1,13 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, Eraser, Keyboard as KeyboardIcon, Send, Square } from 'lucide-react'
-import { Keyboard } from '../components/Keyboard'
+import { Eraser, Send, Square } from 'lucide-react'
 import { useWony } from '../state/wony-context'
 
 export function Chat({
   draft,
   setDraft,
-  keyboardOpen,
-  setKeyboardOpen,
 }: {
   draft: string
   setDraft: (value: string) => void
-  keyboardOpen: boolean
-  setKeyboardOpen: (open: boolean) => void
 }) {
   const {
     config,
@@ -38,7 +33,7 @@ export function Chat({
   useLayoutEffect(() => {
     const el = scroller.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [turns, streaming, pending, keyboardOpen])
+  }, [turns, streaming, pending])
 
   const submit = () => {
     const text = draft.trim()
@@ -48,16 +43,9 @@ export function Chat({
     setDraft('')
   }
 
-  const language = config?.assistant.language || 'en'
-
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div
-        ref={scroller}
-        className={`scroll-y flex-1 px-4 py-4 flex flex-col gap-4 ${
-          keyboardOpen ? 'short:hidden' : ''
-        }`}
-      >
+      <div ref={scroller} className="scroll-y flex-1 px-4 py-4 flex flex-col gap-4">
         {turns.length === 0 && !pending && (
           <div className="flex-1 flex items-center justify-center">
             <p className="t-body text-muted text-center px-8">
@@ -99,23 +87,12 @@ export function Chat({
       </div>
 
       <div className="shrink-0 px-3 py-2 flex items-center gap-2 border-t border-line">
-        <button
-          onClick={() => setKeyboardOpen(!keyboardOpen)}
-          aria-label={keyboardOpen ? 'Hide keyboard' : 'Show keyboard'}
-          className="press flex items-center justify-center w-11 h-11 rounded-full text-muted shrink-0"
-        >
-          {keyboardOpen ? <ChevronDown size={22} /> : <KeyboardIcon size={22} />}
-        </button>
-
-        {/* Both ways in at once. A plugged-in USB keyboard types here directly;
-            inputMode=none only stops a platform virtual keyboard from opening
-            on top of ours, and does not block physical keys. autoFocus means
-            someone with a keyboard can start typing without finding the field
-            first. The on-screen keyboard stays in sync because Keyboard.tsx
-            pushes `value` back into it. */}
+        {/* Typing is the platform's job: the Pi's display brings up its own
+            keyboard on focus, and a plugged-in USB keyboard types here
+            directly. autoFocus means someone with a keyboard can start typing
+            without finding the field first. */}
         <input
           value={draft}
-          inputMode="none"
           autoFocus
           placeholder={`Ask ${config?.assistant.name ?? 'Wony'}…`}
           onChange={(e) => setDraft(e.target.value)}
@@ -125,7 +102,6 @@ export function Chat({
               submit()
             }
           }}
-          onClick={() => setKeyboardOpen(true)}
           className="flex-1 min-w-0 h-12 px-4 rounded-full bg-surface border border-line
                      t-body outline-none placeholder:text-muted"
         />
@@ -161,15 +137,6 @@ export function Chat({
           </button>
         )}
       </div>
-
-      {keyboardOpen && (
-        <Keyboard
-          value={draft}
-          language={language}
-          onChange={setDraft}
-          onSubmit={submit}
-        />
-      )}
     </div>
   )
 }

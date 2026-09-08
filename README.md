@@ -102,9 +102,9 @@ the lights and sets an alarm for seven"_, then _"run my good night routine"_.
 A routine is just your own words, so it can use anything Wony can do. Saving or
 deleting one is read back to you first.
 
-**Typing.** Tap the box at the bottom to bring up the on-screen keyboard. If you
-plug in a USB or Bluetooth keyboard, just start typing anywhere and Wony picks
-it up. Press Enter to send.
+**Typing.** Tap the box at the bottom and type — the Pi's own touch keyboard
+comes up on its own. If you plug in a USB or Bluetooth keyboard, just start
+typing anywhere and Wony picks it up. Press Enter to send.
 
 **Notifications** appear when something happens on its own — a timer going off,
 new mail arriving. They wait on the screen until you tap them away, so nothing

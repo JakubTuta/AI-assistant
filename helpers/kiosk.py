@@ -7,7 +7,7 @@ device:
   run_tile()  — someone tapped a button. It resolves to a registered job and
                 runs it directly. No model call, so it is instant, free, and
                 gives the same answer every time. This is the common case.
-  run_text()  — someone typed a sentence on the on-screen keyboard. That goes
+  run_text()  — someone typed a sentence into the chat box. That goes
                 through the agent, because free text is what the agent is for.
 
 A third kind of tile, "screen", runs nothing at all: it names a place in the

@@ -99,7 +99,6 @@ function Shell() {
 
   const [screen, setScreen] = useState<Screen>('home')
   const [draft, setDraft] = useState('')
-  const [keyboardOpen, setKeyboardOpen] = useState(false)
   const [hasSpotify, setHasSpotify] = useState(false)
 
   const idleMinutes = config?.kiosk.idle_minutes ?? 15
@@ -122,12 +121,10 @@ function Shell() {
 
   const go = (next: Screen) => {
     setScreen(next)
-    if (next !== 'chat') setKeyboardOpen(false)
   }
 
   const askFromTile = (prompt: string) => {
     setScreen('chat')
-    setKeyboardOpen(false)
     send(prompt)
   }
 
@@ -148,10 +145,7 @@ function Shell() {
 
       {screen === 'home' && (
         <Home
-          onAsk={() => {
-            setScreen('chat')
-            setKeyboardOpen(true)
-          }}
+          onAsk={() => setScreen('chat')}
           onPrompt={askFromTile}
           onScreen={(name) => {
             const next = asScreen(name)
@@ -159,14 +153,7 @@ function Shell() {
           }}
         />
       )}
-      {screen === 'chat' && (
-        <Chat
-          draft={draft}
-          setDraft={setDraft}
-          keyboardOpen={keyboardOpen}
-          setKeyboardOpen={setKeyboardOpen}
-        />
-      )}
+      {screen === 'chat' && <Chat draft={draft} setDraft={setDraft} />}
       {screen === 'notifications' && <Notifications />}
       {screen === 'commands' && <Commands />}
       {screen === 'music' && <Music />}

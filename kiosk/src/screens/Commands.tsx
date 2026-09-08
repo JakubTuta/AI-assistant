@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ChevronRight, Play, X } from 'lucide-react'
 import { fetchJobs, invokeJob } from '../api'
 import type { Job } from '../api'
-import { Keyboard } from '../components/Keyboard'
-import { useWony } from '../state/wony-context'
 
 /** Every registered command, with its arguments.
  *
@@ -11,7 +9,6 @@ import { useWony } from '../state/wony-context'
  *  you do twice a year, and for finding out why a module is quiet.
  */
 export function Commands() {
-  const { config } = useWony()
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<Job | null>(null)
@@ -75,29 +72,14 @@ export function Commands() {
         ))}
       </div>
 
-      {open && (
-        <RunSheet
-          job={open}
-          language={config?.assistant.language || 'en'}
-          onClose={() => setOpen(null)}
-        />
-      )}
+      {open && <RunSheet job={open} onClose={() => setOpen(null)} />}
     </div>
   )
 }
 
-function RunSheet({
-  job,
-  language,
-  onClose,
-}: {
-  job: Job
-  language: string
-  onClose: () => void
-}) {
+function RunSheet({ job, onClose }: { job: Job; onClose: () => void }) {
   const fields = Object.entries(job.parameters.properties)
   const [values, setValues] = useState<Record<string, string>>({})
-  const [activeField, setActiveField] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [result, setResult] = useState<{ text: string; ok: boolean } | null>(null)
   const [running, setRunning] = useState(false)
@@ -108,7 +90,6 @@ function RunSheet({
       return
     }
     setRunning(true)
-    setActiveField(null)
     try {
       const response = await invokeJob(job.name, values)
       setResult({
@@ -152,31 +133,23 @@ function RunSheet({
                 {job.parameters.required.includes(name) ? ' *' : ''}
                 {spec.type !== 'string' ? ` (${spec.type})` : ''}
               </span>
-              {/* Typeable with a real keyboard as well as the on-screen one.
-                  onFocus rather than onClick alone, so tabbing between fields
-                  moves the on-screen keyboard with the caret. */}
               <input
                 value={values[name] ?? ''}
-                inputMode="none"
                 onChange={(e) =>
                   setValues((current) => ({ ...current, [name]: e.target.value }))
                 }
-                onFocus={() => setActiveField(name)}
                 onKeyDown={(e) => {
-                  // Same as the on-screen Enter in this sheet: commit the
-                  // field, do not fire the command. Running is one deliberate
-                  // press of Run, which a destructive job asks about twice.
+                  // Enter commits the field, it does not fire the command.
+                  // Running is one deliberate press of Run, which a destructive
+                  // job asks about twice.
                   if (e.key === 'Enter') {
                     e.preventDefault()
                     e.currentTarget.blur()
-                    setActiveField(null)
                   }
                 }}
                 placeholder={spec.description || ''}
-                className={`h-12 px-4 rounded-xl bg-surface-2 border t-body outline-none
-                            placeholder:text-muted ${
-                              activeField === name ? 'border-accent' : 'border-line'
-                            }`}
+                className="h-12 px-4 rounded-xl bg-surface-2 border border-line t-body
+                           outline-none placeholder:text-muted focus:border-accent"
               />
             </label>
           ))}
@@ -209,17 +182,6 @@ function RunSheet({
             </span>
           </button>
         </div>
-
-        {activeField && (
-          <Keyboard
-            value={values[activeField] ?? ''}
-            language={language}
-            onChange={(value) =>
-              setValues((current) => ({ ...current, [activeField]: value }))
-            }
-            onSubmit={() => setActiveField(null)}
-          />
-        )}
       </div>
     </div>
   )

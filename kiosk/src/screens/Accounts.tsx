@@ -12,8 +12,6 @@ import {
 } from 'lucide-react'
 import { fetchGoogleAccounts, invokeJob } from '../api'
 import type { GoogleAccount, GoogleAccountsSnapshot } from '../api'
-import { Keyboard } from '../components/Keyboard'
-import { useWony } from '../state/wony-context'
 
 /** Add, rename, re-authorize and remove Google accounts by hand.
  *
@@ -23,14 +21,11 @@ import { useWony } from '../state/wony-context'
  *  would have run — nothing about accounts is implemented twice.
  */
 export function Accounts() {
-  const { config } = useWony()
   const [snapshot, setSnapshot] = useState<GoogleAccountsSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<GoogleAccount | null>(null)
   const [adding, setAdding] = useState(false)
-
-  const language = config?.assistant.language || 'en'
 
   useEffect(() => {
     fetchGoogleAccounts()
@@ -118,14 +113,9 @@ export function Accounts() {
         </button>
       </div>
 
-      {adding && <AddSheet language={language} onClose={close} />}
+      {adding && <AddSheet onClose={close} />}
       {editing && (
-        <AccountSheet
-          account={editing}
-          services={snapshot.services}
-          language={language}
-          onClose={close}
-        />
+        <AccountSheet account={editing} services={snapshot.services} onClose={close} />
       )}
     </div>
   )
@@ -239,29 +229,25 @@ function Sheet({
   )
 }
 
-/** A text field that takes physical keys and drives the on-screen keyboard. */
+/** A text field. Focusing it is what raises the display's own keyboard. */
 function NameField({
   value,
-  focused,
+  autoFocus = false,
   onChange,
-  onFocus,
   onCommit,
   placeholder,
 }: {
   value: string
-  focused: boolean
+  autoFocus?: boolean
   onChange: (value: string) => void
-  onFocus: () => void
   onCommit: () => void
   placeholder: string
 }) {
   return (
     <input
       value={value}
-      inputMode="none"
-      autoFocus
+      autoFocus={autoFocus}
       onChange={(e) => onChange(e.target.value)}
-      onFocus={onFocus}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.preventDefault()
@@ -269,8 +255,8 @@ function NameField({
         }
       }}
       placeholder={placeholder}
-      className={`h-12 px-4 rounded-xl bg-surface-2 border t-body outline-none
-                  placeholder:text-muted ${focused ? 'border-accent' : 'border-line'}`}
+      className="h-12 px-4 rounded-xl bg-surface-2 border border-line t-body outline-none
+                 placeholder:text-muted focus:border-accent"
     />
   )
 }
@@ -289,15 +275,8 @@ function SigningIn() {
   )
 }
 
-function AddSheet({
-  language,
-  onClose,
-}: {
-  language: string
-  onClose: (changed: boolean) => void
-}) {
+function AddSheet({ onClose }: { onClose: (changed: boolean) => void }) {
   const [name, setName] = useState('')
-  const [keyboard, setKeyboard] = useState(true)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ text: string; ok: boolean } | null>(null)
 
@@ -305,7 +284,6 @@ function AddSheet({
     const label = name.trim()
     if (!label || busy) return
     setBusy(true)
-    setKeyboard(false)
     setResult(null)
     const response = await invokeJob('manage_google_accounts', { action: 'add', name: label })
     setResult({
@@ -322,9 +300,8 @@ function AddSheet({
       <div className="scroll-y flex-1 px-5 pb-3 flex flex-col gap-3">
         <NameField
           value={name}
-          focused={keyboard}
+          autoFocus
           onChange={setName}
-          onFocus={() => setKeyboard(true)}
           onCommit={add}
           placeholder="work, personal, …"
         />
@@ -356,15 +333,6 @@ function AddSheet({
           </span>
         </button>
       </div>
-
-      {keyboard && !busy && (
-        <Keyboard
-          value={name}
-          language={language}
-          onChange={setName}
-          onSubmit={add}
-        />
-      )}
     </Sheet>
   )
 }
@@ -372,16 +340,13 @@ function AddSheet({
 function AccountSheet({
   account,
   services,
-  language,
   onClose,
 }: {
   account: GoogleAccount
   services: Services
-  language: string
   onClose: (changed: boolean) => void
 }) {
   const [newName, setNewName] = useState(account.name)
-  const [keyboard, setKeyboard] = useState(false)
   const [busy, setBusy] = useState<'rename' | 'primary' | 'authorize' | 'remove' | null>(
     null,
   )
@@ -398,7 +363,6 @@ function AccountSheet({
     thenClose: boolean,
   ) => {
     setBusy(kind)
-    setKeyboard(false)
     setResult(null)
     const response = await invokeJob(job, args)
     setBusy(null)
@@ -434,9 +398,7 @@ function AccountSheet({
           <span className="t-small text-muted">Name</span>
           <NameField
             value={newName}
-            focused={keyboard}
             onChange={setNewName}
-            onFocus={() => setKeyboard(true)}
             onCommit={rename}
             placeholder={account.name}
           />
@@ -508,15 +470,6 @@ function AccountSheet({
           </p>
         )}
       </div>
-
-      {keyboard && busy === null && (
-        <Keyboard
-          value={newName}
-          language={language}
-          onChange={setNewName}
-          onSubmit={rename}
-        />
-      )}
     </Sheet>
   )
 }

@@ -2,17 +2,15 @@ import { useEffect, useState } from 'react'
 import { Check, Download, RotateCw, TriangleAlert } from 'lucide-react'
 import { checkUpdates, fetchSettings, saveSettings } from '../api'
 import type { SettingField, SettingsResponse } from '../api'
-import { Keyboard } from '../components/Keyboard'
-import { useWony } from '../state/wony-context'
 
 type Draft = Record<string, string | number | boolean | null>
 
 /** Everything in config.yaml that a person should be able to change, on the
  *  screen itself.
  *
- *  The Pi has no keyboard and no text editor. Without this, switching the AI
- *  provider or allowing Wony to send email means finding another computer and
- *  editing a file over SSH.
+ *  The Pi has no text editor. Without this, switching the AI provider or
+ *  allowing Wony to send email means finding another computer and editing a
+ *  file over SSH.
  */
 export function Settings() {
   const [data, setData] = useState<SettingsResponse | null>(null)
@@ -23,8 +21,6 @@ export function Settings() {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<'none' | 'ok' | 'restart'>('none')
   const [update, setUpdate] = useState<string | null>(null)
-  // Which text field the on-screen keyboard is currently typing into.
-  const [typing, setTyping] = useState<SettingField | null>(null)
 
   useEffect(() => {
     fetchSettings()
@@ -87,20 +83,6 @@ export function Settings() {
   const valueOf = (field: SettingField) =>
     field.key in draft ? draft[field.key] : field.value
 
-  if (typing) {
-    return (
-      <TypeInto
-        field={typing}
-        value={String(valueOf(typing) ?? '')}
-        onDone={(text) => {
-          set(typing.key, text)
-          setTyping(null)
-        }}
-        onCancel={() => setTyping(null)}
-      />
-    )
-  }
-
   return (
     <div className="scroll-y flex-1 px-4 py-4 flex flex-col gap-5">
       {data.sections.map((section) => (
@@ -110,13 +92,7 @@ export function Settings() {
           </h2>
           <div className="rounded-xl bg-surface border border-line divide-y divide-line">
             {section.fields.map((field) => (
-              <Row
-                key={field.key}
-                field={field}
-                value={valueOf(field)}
-                onChange={set}
-                onType={() => setTyping(field)}
-              />
+              <Row key={field.key} field={field} value={valueOf(field)} onChange={set} />
             ))}
           </div>
         </section>
@@ -197,12 +173,10 @@ function Row({
   field,
   value,
   onChange,
-  onType,
 }: {
   field: SettingField
   value: string | number | boolean | null
   onChange: (key: string, value: string | number | boolean | null) => void
-  onType: () => void
 }) {
   const label = (
     <span className="min-w-0">
@@ -273,16 +247,43 @@ function Row({
     )
   }
 
+  // Typed into directly: focusing the field is what raises the display's own
+  // keyboard, so there is nothing for the app to put on screen first.
+  const text = String(value ?? '')
+
+  if (field.kind === 'longtext') {
+    return (
+      <div className="px-4 py-3 flex flex-col gap-2">
+        {label}
+        <textarea
+          value={text}
+          rows={3}
+          placeholder="not set"
+          onChange={(e) => onChange(field.key, e.target.value)}
+          className="px-4 py-3 rounded-xl bg-surface-2 border border-line t-body
+                     outline-none placeholder:text-muted focus:border-accent resize-none"
+        />
+      </div>
+    )
+  }
+
   return (
-    <button
-      onClick={onType}
-      className="w-full px-4 py-3 flex items-center gap-3 text-left active:scale-[0.99]"
-    >
+    <div className="px-4 py-3 flex flex-col gap-2">
       {label}
-      <span className="ml-auto t-body text-muted truncate max-w-[40%]">
-        {String(value ?? '') || 'not set'}
-      </span>
-    </button>
+      <input
+        value={text}
+        placeholder="not set"
+        onChange={(e) => onChange(field.key, e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            e.currentTarget.blur()
+          }
+        }}
+        className="h-12 px-4 rounded-xl bg-surface-2 border border-line t-body
+                   outline-none placeholder:text-muted focus:border-accent"
+      />
+    </div>
   )
 }
 
@@ -312,47 +313,5 @@ function Switch({ checked }: { checked: boolean }) {
         style={{ left: checked ? '1.75rem' : '0.25rem' }}
       />
     </span>
-  )
-}
-
-/** The on-screen keyboard, filling the screen, for one text field. */
-function TypeInto({
-  field,
-  value,
-  onDone,
-  onCancel,
-}: {
-  field: SettingField
-  value: string
-  onDone: (text: string) => void
-  onCancel: () => void
-}) {
-  const { config } = useWony()
-  const [text, setText] = useState(value)
-
-  return (
-    <div className="flex-1 flex flex-col">
-      <div className="px-4 py-4 flex flex-col gap-1">
-        <span className="t-body">{field.label}</span>
-        {field.help && <span className="t-small text-muted">{field.help}</span>}
-        <div className="mt-2 px-4 py-3 rounded-xl bg-surface border border-line min-h-[3.5rem]">
-          <span className="t-body break-words">{text || '\u00a0'}</span>
-        </div>
-        <button
-          onClick={onCancel}
-          className="self-start mt-2 px-4 py-2 rounded-xl border border-line t-small text-muted active:scale-95"
-        >
-          Cancel
-        </button>
-      </div>
-      <div className="mt-auto">
-        <Keyboard
-          value={text}
-          language={config?.assistant.language || 'en'}
-          onChange={setText}
-          onSubmit={() => onDone(text)}
-        />
-      </div>
-    </div>
   )
 }
