@@ -1225,6 +1225,21 @@ def _node_too_old():
     return "" if supported else version
 
 
+def _kiosk_built() -> bool:
+    """True when kiosk/dist/index.html exists *and* has content.
+
+    Existence alone is not enough: a build killed partway through (an OOM on a
+    Pi is the usual way) leaves a zero-byte index.html behind. That file passes
+    an isfile() check, so setup calls the build done and skips it forever after,
+    while the server happily serves `200 OK` with an empty body — a blank screen
+    and a curl that prints nothing, with no error anywhere to explain it.
+    """
+    try:
+        return os.path.getsize(KIOSK_INDEX) > 0
+    except OSError:
+        return False
+
+
 def build_kiosk(chosen):
     """Build the touch UI, and return what is still missing.
 
@@ -1236,7 +1251,7 @@ def build_kiosk(chosen):
         return []
 
     section("The touch screen UI")
-    built = os.path.isfile(KIOSK_INDEX)
+    built = _kiosk_built()
     if built:
         note("Already built (kiosk/dist).")
         note("Rebuild it after every 'git pull' — the screen is not in the repo.")
@@ -1270,9 +1285,16 @@ def build_kiosk(chosen):
             )
             return [f"Screen UI: build failed — {BUILD_BY_HAND}"]
 
-    if os.path.isfile(KIOSK_INDEX):
+    if _kiosk_built():
         ok("built kiosk/dist — the screen has something to show.")
         return []
+    if os.path.isfile(KIOSK_INDEX):
+        warn("The build left kiosk/dist/index.html empty — the screen will be blank.")
+        note(
+            "That is what a build killed partway through looks like: add swap, or "
+            "build on another machine and copy kiosk/dist across."
+        )
+        return [f"Screen UI: kiosk/dist/index.html is empty — {BUILD_BY_HAND}"]
     warn("The build finished but kiosk/dist/index.html is not there.")
     return [f"Screen UI: build produced no kiosk/dist/index.html — {BUILD_BY_HAND}"]
 
