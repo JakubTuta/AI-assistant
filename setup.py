@@ -6,9 +6,10 @@ Wony setup — the required, single-file installer.
 
 Sets the whole app up and leaves it working: picks/creates the Python
 environment, installs only the dependencies for the features you choose,
-writes .env / config.yaml and the required folders, then asks for every API
-key, credentials file and permission those features need — checking each key
-against the service and running the Spotify and Google sign-ins right here.
+writes .env / config.yaml and the required folders, builds the touch screen UI
+with npm, then asks for every API key, credentials file and permission those
+features need — checking each key against the service and running the Spotify
+and Google sign-ins right here.
 
 Re-run any time to add/remove modules: it reuses an existing venv, keeps your
 .env and config.yaml, pre-marks what you already have, and SKIPS reinstalling
@@ -73,6 +74,8 @@ MARKER = os.path.join(ROOT, ".wony_setup")
 VENV_DIR = os.path.join(ROOT, "venv")
 CREDENTIALS = os.path.join(ROOT, "credentials")
 GOOGLE_CREDENTIALS = os.path.join(CREDENTIALS, "google_credentials.json")
+KIOSK = os.path.join(ROOT, "kiosk")
+KIOSK_INDEX = os.path.join(KIOSK, "dist", "index.html")
 
 # The modules setup always installs. "ai", "status" and "employer" are always-on
 # in the app itself (helpers/config.ALWAYS_ON) and are not written into
@@ -90,7 +93,8 @@ FEATURES = [
         "module": None,
         "default": True,
         "desc": "Run Wony as a screen: tap tiles, type into the chat box.",
-        "needs": "Start with: python wony.py   (then open the URL it prints).",
+        "needs": "Node.js 20.19+ — setup builds the screen for you. "
+        "Start with: python wony.py   (then open the URL it prints).",
     },
     {
         "key": "weather",
@@ -1185,6 +1189,94 @@ def apply_enabled_modules(chosen):
     ok(f"enabled_modules = {', '.join(wanted)}")
 
 
+# ── The touch UI (a built artifact, not a Python package) ─────────────────────
+
+# Vite refuses to run below this, and the Node in Raspberry Pi OS is often older.
+NODE_MIN = "Node 20.19+ (or 22.12+)"
+NODE_INSTALL = (
+    "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - "
+    "&& sudo apt install -y nodejs"
+)
+BUILD_BY_HAND = "cd kiosk && npm install && npm run build"
+
+
+def _npm():
+    """Path to npm, or "" when Node is not installed."""
+    import shutil
+
+    return shutil.which("npm") or ""
+
+
+def _node_too_old():
+    """The version string when node is present but too old to build with,
+    otherwise "" (which also covers "cannot tell")."""
+    try:
+        version = subprocess.check_output(
+            ["node", "--version"], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except Exception:
+        return ""
+    match = re.match(r"v(\d+)\.(\d+)", version)
+    if not match:
+        return ""
+    major, minor = int(match.group(1)), int(match.group(2))
+    # Vite's own range: ^20.19 || >=22.12.
+    supported = major > 22 or (major == 22 and minor >= 12) or (major == 20 and minor >= 19)
+    return "" if supported else version
+
+
+def build_kiosk(chosen):
+    """Build the touch UI, and return what is still missing.
+
+    This is the one gap the app cannot report itself: without kiosk/dist the
+    API still answers every request, so the screen looks like a working server
+    that has decided the home page does not exist ({"detail":"Not found"}).
+    """
+    if not any(f["key"] == "kiosk" for f in chosen):
+        return []
+
+    section("The touch screen UI")
+    built = os.path.isfile(KIOSK_INDEX)
+    if built:
+        note("Already built (kiosk/dist).")
+        note("Rebuild it after every 'git pull' — the screen is not in the repo.")
+        if not (interactive() and confirm("Rebuild it now?", default=False)):
+            return []
+
+    npm = _npm()
+    if not npm:
+        warn("Node.js is not installed — the screen cannot be built here.")
+        note(f"Install {NODE_MIN}, then:  {BUILD_BY_HAND}")
+        note(NODE_INSTALL)
+        return (
+            []
+            if built
+            else [f"Screen UI: not built — install Node.js, then: {BUILD_BY_HAND}"]
+        )
+
+    outdated = _node_too_old()
+    if outdated:
+        warn(f"Node {outdated} is older than the build needs ({NODE_MIN}).")
+        note(f"Upgrade with:  {NODE_INSTALL}")
+
+    note("This downloads the UI's packages — a few minutes on a Pi.")
+    for step in (["install"], ["run", "build"]):
+        print(c("    $ npm " + " ".join(step), "90"))
+        if subprocess.call([npm] + step, cwd=KIOSK) != 0:
+            warn(f"'npm {' '.join(step)}' failed — the screen will not load.")
+            note(
+                "A Pi with little RAM usually runs out of memory here: add swap, or "
+                "build on another machine and copy kiosk/dist across."
+            )
+            return [f"Screen UI: build failed — {BUILD_BY_HAND}"]
+
+    if os.path.isfile(KIOSK_INDEX):
+        ok("built kiosk/dist — the screen has something to show.")
+        return []
+    warn("The build finished but kiosk/dist/index.html is not there.")
+    return [f"Screen UI: build produced no kiosk/dist/index.html — {BUILD_BY_HAND}"]
+
+
 # ── Install ─────────────────────────────────────────────────────────────────────
 
 
@@ -1290,8 +1382,8 @@ def next_steps(chosen, use_venv, pending):
     kiosk = any(f["key"] == "kiosk" for f in chosen)
     # The touch UI is a built artifact, and skipping the build is silent: the
     # API answers fine and the display shows nothing at all.
-    if kiosk and not os.path.isfile(os.path.join(ROOT, "kiosk", "dist", "index.html")):
-        print(c("\n  Build the screen: ", "1") + "cd kiosk && npm install && npm run build")
+    if kiosk and not os.path.isfile(KIOSK_INDEX):
+        print(c("\n  Build the screen: ", "1") + BUILD_BY_HAND)
 
     py = os.path.relpath(sys.executable, ROOT) if use_venv else "python"
     print(c("\n  Start Wony:  ", "1") + (f"{py} wony.py" if kiosk else f"{py} wony.py text"))
@@ -1311,6 +1403,10 @@ def cmd_configure():
     ensure_env()
     _, detected = detect()
     pending = configure([f for f in FEATURES if f["key"] in detected])
+    # Nothing is installed here, so the screen is not built either — but it is
+    # still the reason a finished-looking install shows nothing.
+    if "kiosk" in detected and not os.path.isfile(KIOSK_INDEX):
+        pending.append(f"Screen UI: not built — {BUILD_BY_HAND}")
     section("Done")
     show_pending(pending)
     print()
@@ -1367,10 +1463,11 @@ def main():
     install(chosen, detected)
     apply_enabled_modules(chosen)
     verify_install(chosen)
+    pending = build_kiosk(chosen)
     # Before the questions: the marker unlocks wony.py, which the boot-units
     # step runs, and the sign-in steps import what was just installed.
     write_marker(use_venv)
-    pending = configure(chosen)
+    pending += configure(chosen)
     print()
     if interactive() and confirm("Run the full setup check now?", default=True):
         run_doctor()
